@@ -569,60 +569,56 @@ export const Game: React.FC = () => {
       
       {/* Main Content Area */}
       <div className="flex-1 flex h-screen">
-        {/* Left Panel - Tower Selection */}
-        <div className="w-64 bg-gray-800 p-4 border-r border-gray-700">
-          <h2 className="text-white font-bold mb-4">Tower Selection</h2>
-          
-          <div className="space-y-3">
-            {towerTypes.map(tower => (
-              <div 
-                key={tower.id}
-                className={`p-3 rounded cursor-pointer transition-colors ${
-                  selectedTower?.id === tower.id 
-                    ? getTowerSelectionColor(tower.id)
-                    : 'bg-gray-700 hover:bg-gray-600'
-                }`}
-                onClick={() => handleTowerSelect(tower)}
-              >
-                <div className="flex justify-between items-center">
-                  <span className="text-white font-medium">{tower.name}</span>
-                  <span className="text-yellow-400 text-sm">{tower.cost}</span>
-                </div>
-                <div className="mt-1 text-xs text-gray-300">
-                  <div>Damage: {tower.damage}</div>
-                  <div>Range: {tower.range}</div>
-                </div>
-                {tower.description && (
-                  <div className="mt-1 text-xs text-gray-400">{tower.description}</div>
-                )}
+        {/* Left Panel - Test Minions and Settings */}
+        <div className="w-64 bg-gray-800 p-4 border-r border-gray-700 flex flex-col">
+          {/* Toggle Settings */}
+          <div className="mb-4 p-3 bg-gray-700 rounded">
+            <h3 className="text-white font-bold mb-2">Display Settings</h3>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-gray-300">Show Tile IDs</span>
+                <button 
+                  className={`w-10 h-5 rounded-full transition-colors ${showCoordinates ? 'bg-blue-600' : 'bg-gray-600'}`}
+                  onClick={() => setShowCoordinates(!showCoordinates)}
+                >
+                  <div className={`w-4 h-4 rounded-full bg-white transform transition-transform ${showCoordinates ? 'translate-x-5' : 'translate-x-1'}`} />
+                </button>
               </div>
-            ))}
-          </div>
-          
-          <div className="mt-6">
-            <h3 className="text-white font-bold mb-2">Tools</h3>
-            <div className="flex space-x-2">
-              <button 
-                className={`px-3 py-2 rounded text-white text-sm ${
-                  selectedTool === 'tower' ? 'bg-blue-600' : 'bg-gray-700 hover:bg-gray-600'
-                }`}
-                onClick={() => setSelectedTool('tower')}
-              >
-                Place Tower
-              </button>
-              <button 
-                className={`px-3 py-2 rounded text-white text-sm ${
-                  selectedTool === 'remove' ? 'bg-red-600' : 'bg-gray-700 hover:bg-gray-600'
-                }`}
-                onClick={() => setSelectedTool('remove')}
-              >
-                Remove
-              </button>
+              
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-gray-300">Show Grid Lines</span>
+                <button 
+                  className={`w-10 h-5 rounded-full transition-colors ${showGridLines ? 'bg-blue-600' : 'bg-gray-600'}`}
+                  onClick={() => setShowGridLines(!showGridLines)}
+                >
+                  <div className={`w-4 h-4 rounded-full bg-white transform transition-transform ${showGridLines ? 'translate-x-5' : 'translate-x-1'}`} />
+                </button>
+              </div>
+              
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-gray-300">Show Cell Types</span>
+                <button 
+                  className={`w-10 h-5 rounded-full transition-colors ${showCellTypes ? 'bg-blue-600' : 'bg-gray-600'}`}
+                  onClick={() => setShowCellTypes(!showCellTypes)}
+                >
+                  <div className={`w-4 h-4 rounded-full bg-white transform transition-transform ${showCellTypes ? 'translate-x-5' : 'translate-x-1'}`} />
+                </button>
+              </div>
+              
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-gray-300">Show Grid Stats</span>
+                <button 
+                  className={`w-10 h-5 rounded-full transition-colors ${showGridStats ? 'bg-blue-600' : 'bg-gray-600'}`}
+                  onClick={() => setShowGridStats(!showGridStats)}
+                >
+                  <div className={`w-4 h-4 rounded-full bg-white transform transition-transform ${showGridStats ? 'translate-x-5' : 'translate-x-1'}`} />
+                </button>
+              </div>
             </div>
           </div>
           
           {/* Test Minion Controls */}
-          <div className="mt-6 p-3 bg-gray-700 rounded">
+          <div className="p-3 bg-gray-700 rounded">
             <h3 className="text-white font-bold mb-2">Test Minions</h3>
             <div className="flex space-x-2 mb-3">
               <button 
@@ -668,6 +664,7 @@ export const Game: React.FC = () => {
               </div>
             </div>
             
+            {/* Minion List */}
             {testMinions.length > 0 && testMinions.some(minion => !minion.isDead) && (
               <div className="mt-4">
                 <h4 className="text-white text-sm font-medium mb-2">Active Minions</h4>
@@ -724,6 +721,59 @@ export const Game: React.FC = () => {
                 </div>
               </div>
             )}
+          </div>
+        </div>
+        
+        {/* Middle Panel - Tower Selection */}
+        <div className="w-64 bg-gray-800 p-4 border-r border-gray-700">
+          <h2 className="text-white font-bold mb-4">Tower Selection</h2>
+          
+          <div className="space-y-3">
+            {towerTypes.map(tower => (
+              <div 
+                key={tower.id}
+                className={`p-3 rounded cursor-pointer transition-colors ${
+                  selectedTower?.id === tower.id 
+                    ? getTowerSelectionColor(tower.id)
+                    : 'bg-gray-700 hover:bg-gray-600'
+                }`}
+                onClick={() => handleTowerSelect(tower)}
+              >
+                <div className="flex justify-between items-center">
+                  <span className="text-white font-medium">{tower.name}</span>
+                  <span className="text-yellow-400 text-sm">{tower.cost}</span>
+                </div>
+                <div className="mt-1 text-xs text-gray-300">
+                  <div>Damage: {tower.damage}</div>
+                  <div>Range: {tower.range}</div>
+                </div>
+                {tower.description && (
+                  <div className="mt-1 text-xs text-gray-400">{tower.description}</div>
+                )}
+              </div>
+            ))}
+          </div>
+          
+          <div className="mt-6">
+            <h3 className="text-white font-bold mb-2">Tools</h3>
+            <div className="flex space-x-2">
+              <button 
+                className={`px-3 py-2 rounded text-white text-sm ${
+                  selectedTool === 'tower' ? 'bg-blue-600' : 'bg-gray-700 hover:bg-gray-600'
+                }`}
+                onClick={() => setSelectedTool('tower')}
+              >
+                Place Tower
+              </button>
+              <button 
+                className={`px-3 py-2 rounded text-white text-sm ${
+                  selectedTool === 'remove' ? 'bg-red-600' : 'bg-gray-700 hover:bg-gray-600'
+                }`}
+                onClick={() => setSelectedTool('remove')}
+              >
+                Remove
+              </button>
+            </div>
           </div>
         </div>
         

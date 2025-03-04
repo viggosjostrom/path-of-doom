@@ -2,8 +2,11 @@
 export const GRID_SIZE = 16; // 16x16 grid
 export const CELL_SIZE = 32; // 32px per cell
 
+// Import the required types
+import { MinionType, MinionStats, TowerType, TowerStats, ThemeColors } from '../types';
+
 // Game Constants
-export const INITIAL_MONEY = 100;
+export const INITIAL_MONEY = 500;
 export const INITIAL_LIVES = 20;
 export const WAVE_DELAY = 5000; // 5 seconds between waves
 
