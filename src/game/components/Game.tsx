@@ -8,6 +8,7 @@ import { GridCell, CellType } from '../types/gridTypes';
 import { TestMinion } from './TestMinion';
 import { TowerAttack } from './TowerAttack';
 import { Minion, Tower, TowerType } from '../types';
+import { INITIAL_MONEY } from '../core/constants';
 
 // Tower selection type
 interface TowerSelection {
@@ -30,7 +31,7 @@ export const Game: React.FC = () => {
   const [showGridStats, setShowGridStats] = useState(false);
   
   // Game state
-  const [resources, setResources] = useState(100);
+  const [resources, setResources] = useState(INITIAL_MONEY);
   const [wave, setWave] = useState(1);
   const [lives, setLives] = useState(20);
   const [selectedTower, setSelectedTower] = useState<TowerSelection | null>(null);
@@ -375,7 +376,7 @@ export const Game: React.FC = () => {
     setActiveAttacks([]);
     setSelectedTower(null);
     setSelectedTool('tower');
-    setResources(500);
+    setResources(INITIAL_MONEY);
     setWave(1);
     setLives(20);
     
