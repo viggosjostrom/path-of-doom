@@ -1,15 +1,19 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Grid } from './Grid';
-import { createDefaultPath, createGrid, generateId } from '../utils';
+import { createDefaultPath, createGrid, generateId, extractPathFromGrid } from '../utils';
 import { GRID_WIDTH, GRID_HEIGHT, CELL_SIZE } from '../core/gridConstants';
 import { GridCell, CellType } from '../types/gridTypes';
+import { TestMinion } from './TestMinion';
+import { TowerAttack } from './TowerAttack';
+import { Minion, Tower, TowerType } from '../types';
 
-// Tower type definition
-interface TowerType {
+// Tower selection type
+interface TowerSelection {
   id: string;
   name: string;
+  type: TowerType;
   cost: number;
   damage: number;
   range: number;
@@ -29,12 +33,144 @@ export const Game: React.FC = () => {
   const [resources, setResources] = useState(100);
   const [wave, setWave] = useState(1);
   const [lives, setLives] = useState(20);
-  const [selectedTower, setSelectedTower] = useState<TowerType | null>(null);
+  const [selectedTower, setSelectedTower] = useState<TowerSelection | null>(null);
+  
+  // Tower and minion state
+  const [towers, setTowers] = useState<Tower[]>([]);
+  const [testMinion, setTestMinion] = useState<Minion | null>(null);
+  const [activeAttacks, setActiveAttacks] = useState<{tower: Tower, target: Minion, id: string}[]>([]);
+  
+  // Animation frame reference
+  const animationFrameRef = useRef<number | null>(null);
+  const lastUpdateTimeRef = useRef<number>(Date.now());
   
   // Initialize grid with a default path
   const [grid, setGrid] = useState<GridCell[][]>(() => 
     createDefaultPath(createGrid(GRID_WIDTH, GRID_HEIGHT))
   );
+  
+  // Create test minion on path
+  useEffect(() => {
+    const path = extractPathFromGrid(grid);
+    if (path.length > 0) {
+      // Place minion in the middle of the path
+      const pathPosition = Math.floor(path.length / 2);
+      const minionPosition = path[pathPosition];
+      
+      const newMinion: Minion = {
+        id: 'test-minion',
+        type: 'Grunt',
+        health: 1000,
+        maxHealth: 1000,
+        speed: 0,
+        reward: 10,
+        abilities: [],
+        position: minionPosition,
+        path: path,
+        pathIndex: pathPosition,
+        effects: [],
+        isDead: false
+      };
+      
+      setTestMinion(newMinion);
+    }
+  }, [grid]);
+  
+  // Game update loop
+  useEffect(() => {
+    const updateGame = (timestamp: number) => {
+      const now = Date.now();
+      const deltaTime = (now - lastUpdateTimeRef.current) / 1000; // Convert to seconds
+      lastUpdateTimeRef.current = now;
+      
+      // Update towers (cooldowns, attacks)
+      setTowers(prevTowers => {
+        // Track which towers will attack this frame to prevent multiple attacks at once
+        const attackingTowers: string[] = [];
+        
+        return prevTowers.map(tower => {
+          // If tower is on cooldown, reduce it
+          if (tower.currentCooldown > 0) {
+            return {
+              ...tower,
+              currentCooldown: Math.max(0, tower.currentCooldown - deltaTime)
+            };
+          }
+          
+          // Check if tower can attack the test minion
+          if (testMinion && !testMinion.isDead) {
+            const dx = tower.position.x - testMinion.position.x;
+            const dy = tower.position.y - testMinion.position.y;
+            const distance = Math.abs(dx) + Math.abs(dy); // Manhattan distance
+            
+            if (distance <= tower.range) {
+              // Tower can attack - but only allow one tower to attack per frame
+              // to prevent multiple towers killing the minion at once
+              if (!attackingTowers.includes(tower.id)) {
+                attackingTowers.push(tower.id);
+                
+                // Use a more unique ID with a random component
+                const attackId = `attack-${tower.id}-${now}-${Math.random().toString(36).substring(2, 8)}`;
+                
+                // Calculate animation duration based on tower type
+                const animationDuration = getAnimationDuration(tower.type);
+                
+                // Add attack animation
+                setActiveAttacks(prev => [
+                  ...prev, 
+                  { tower, target: testMinion, id: attackId }
+                ]);
+                
+                // Remove attack animation after animation completes
+                setTimeout(() => {
+                  setActiveAttacks(prev => prev.filter(a => a.id !== attackId));
+                }, animationDuration);
+                
+                // Damage the minion - with a delay to ensure animations complete first
+                setTimeout(() => {
+                  setTestMinion(prev => {
+                    if (!prev || prev.isDead) return prev;
+                    
+                    console.log(`Tower ${tower.type} dealing ${tower.damage} damage to minion with ${prev.health} health`);
+                    const newHealth = Math.max(0, prev.health - tower.damage);
+                    const isDead = newHealth <= 0;
+                    
+                    return {
+                      ...prev,
+                      health: newHealth,
+                      isDead
+                    };
+                  });
+                }, animationDuration - 100); // Apply damage just before animation ends
+                
+                // Reset tower cooldown
+                return {
+                  ...tower,
+                  currentCooldown: tower.cooldown,
+                  lastAttackTime: now
+                };
+              }
+            }
+          }
+          
+          return tower;
+        });
+      });
+      
+      // Continue animation loop
+      animationFrameRef.current = requestAnimationFrame(updateGame);
+    };
+    
+    // Start the game loop
+    animationFrameRef.current = requestAnimationFrame(updateGame);
+    
+    // Cleanup
+    return () => {
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
+    };
+  }, [testMinion]);
   
   // Handle cell click
   const handleCellClick = (x: number, y: number) => {
@@ -55,6 +191,23 @@ export const Game: React.FC = () => {
               type: 'Tower',
               towerId: towerId
             };
+            
+            // Add tower to towers array
+            const newTower: Tower = {
+              id: towerId,
+              type: selectedTower.type,
+              level: 1,
+              position: { x, y },
+              damage: selectedTower.damage,
+              range: selectedTower.range,
+              cooldown: getTowerCooldown(selectedTower.id), // Use a function to get appropriate cooldown
+              currentCooldown: 0,
+              cost: selectedTower.cost,
+              ability: 'None'
+            };
+            
+            setTowers(prev => [...prev, newTower]);
+            
             // Deduct resources
             setResources(prev => Math.max(0, prev - selectedTower.cost));
           } else {
@@ -70,6 +223,9 @@ export const Game: React.FC = () => {
           const towerType = towerId?.split('-')[0];
           const tower = towerTypes.find(t => t.id === towerType);
           const refundAmount = tower ? Math.floor(tower.cost / 2) : 5;
+          
+          // Remove tower from towers array
+          setTowers(prev => prev.filter(t => t.id !== towerId));
           
           newGrid[y][x] = {
             ...newGrid[y][x],
@@ -92,6 +248,27 @@ export const Game: React.FC = () => {
     setWave(1);
     setLives(20);
     setSelectedTower(null);
+    setTowers([]);
+    
+    // Reset test minion
+    const path = extractPathFromGrid(createDefaultPath(createGrid(GRID_WIDTH, GRID_HEIGHT)));
+    if (path.length > 0) {
+      const pathPosition = Math.floor(path.length / 2);
+      setTestMinion({
+        id: 'test-minion',
+        type: 'Grunt',
+        health: 1000,
+        maxHealth: 1000,
+        speed: 0,
+        reward: 10,
+        abilities: [],
+        position: path[pathPosition],
+        path: path,
+        pathIndex: pathPosition,
+        effects: [],
+        isDead: false
+      });
+    }
   };
   
   // Get grid statistics
@@ -114,170 +291,117 @@ export const Game: React.FC = () => {
   const stats = getGridStats();
   
   // Tower types
-  const towerTypes: TowerType[] = [
-    { 
-      id: 'basic', 
-      name: 'Basic Tower', 
-      cost: 10, 
-      damage: 5, 
-      range: 3,
-      description: 'A simple tower with balanced stats.'
-    },
-    { 
-      id: 'sniper', 
-      name: 'Sniper Tower', 
-      cost: 25, 
-      damage: 20, 
-      range: 6,
-      description: 'Long range with high damage but slow firing rate.'
-    },
-    { 
-      id: 'splash', 
-      name: 'Splash Tower', 
-      cost: 30, 
-      damage: 10, 
+  const towerTypes: TowerSelection[] = [
+    {
+      id: 'basic',
+      name: 'Gunner',
+      type: 'Gunner',
+      cost: 10,
+      damage: 10,
       range: 2,
-      description: 'Deals damage to multiple enemies in a small area.'
+      description: 'Basic tower with moderate damage and range'
     },
-    { 
-      id: 'slow', 
-      name: 'Slow Tower', 
-      cost: 15, 
-      damage: 2, 
+    {
+      id: 'sniper',
+      name: 'Sniper',
+      type: 'Gunner',
+      cost: 25,
+      damage: 25,
+      range: 4,
+      description: 'Long range tower with high damage'
+    },
+    {
+      id: 'splash',
+      name: 'Flamethrower',
+      type: 'Flamethrower',
+      cost: 30,
+      damage: 15,
+      range: 2,
+      description: 'Area damage tower with burn effect'
+    },
+    {
+      id: 'slow',
+      name: 'Frost',
+      type: 'Frost',
+      cost: 20,
+      damage: 5,
       range: 3,
-      description: 'Slows down enemies passing through its range.'
-    },
+      description: 'Slows enemies within range'
+    }
   ];
   
   // Handle tower selection
-  const handleTowerSelect = (tower: TowerType) => {
-    if (selectedTower?.id === tower.id) {
-      setSelectedTower(null);
-    } else {
-      setSelectedTower(tower);
-      setSelectedTool('tower');
-    }
+  const handleTowerSelect = (tower: TowerSelection) => {
+    setSelectedTower(tower);
   };
   
   return (
     <div className="min-h-screen flex flex-col bg-gray-900">
-      {/* Top Bar - Game Statistics */}
-      <div className="bg-gray-800 p-3 border-b border-gray-700">
-        <div className="container mx-auto flex flex-wrap justify-between items-center">
-          {/* Game Title */}
-          <div className="text-white font-bold text-xl mb-2 md:mb-0">
-            Path of Doom
-          </div>
+      {/* Game Header */}
+      <div className="bg-gray-800 p-4 border-b border-gray-700 flex justify-between items-center">
+        <h1 className="text-white text-xl font-bold">Path of Doom</h1>
+        
+        <div className="flex items-center space-x-4">
+          <div className="text-yellow-400 font-medium">Resources: {resources}</div>
+          <div className="text-blue-400 font-medium">Wave: {wave}</div>
+          <div className="text-red-400 font-medium">Lives: {lives}</div>
           
-          {/* Game Stats */}
-          <div className="flex space-x-6">
-            <div className="text-white">
-              <span className="font-semibold">Wave:</span> {wave}
-            </div>
-            <div className="text-yellow-400">
-              <span className="font-semibold">Resources:</span> {resources}
-            </div>
-            <div className="text-red-400">
-              <span className="font-semibold">Lives:</span> {lives}
-            </div>
-            
-            {/* Display Options Toggle */}
-            <div className="relative">
-              <button 
-                className="bg-gray-700 hover:bg-gray-600 text-white px-3 py-1 rounded text-sm"
-                onClick={() => setShowGridStats(!showGridStats)}
-              >
-                Display Options {showGridStats ? '▲' : '▼'}
-              </button>
-              
-              {/* Dropdown Panel */}
-              {showGridStats && (
-                <div className="absolute right-0 mt-1 w-64 bg-gray-700 rounded shadow-lg z-10 p-3">
-                  <h3 className="text-white text-sm font-semibold mb-2">Display Options</h3>
-                  <div className="flex flex-col space-y-2">
-                    <label className="flex items-center text-white text-sm">
-                      <input 
-                        type="checkbox" 
-                        checked={showGridLines} 
-                        onChange={() => setShowGridLines(!showGridLines)}
-                        className="mr-2"
-                      />
-                      Show Grid Lines
-                    </label>
-                    <label className="flex items-center text-white text-sm">
-                      <input 
-                        type="checkbox" 
-                        checked={showCoordinates} 
-                        onChange={() => setShowCoordinates(!showCoordinates)}
-                        className="mr-2"
-                      />
-                      Show Coordinates
-                    </label>
-                    <label className="flex items-center text-white text-sm">
-                      <input 
-                        type="checkbox" 
-                        checked={showCellTypes} 
-                        onChange={() => setShowCellTypes(!showCellTypes)}
-                        className="mr-2"
-                      />
-                      Show Cell Types
-                    </label>
-                  </div>
-                  
-                  <h3 className="text-white text-sm font-semibold mt-3 mb-2">Grid Statistics</h3>
-                  <div className="text-sm text-white">
-                    <p>Grid Size: {GRID_WIDTH} x {GRID_HEIGHT}</p>
-                    <p>Path Cells: {stats.pathCells}</p>
-                    <p>Tower Cells: {stats.towerCells}</p>
-                    <p>Empty Cells: {stats.emptyCells}</p>
-                  </div>
-                </div>
-              )}
-            </div>
-            
-            {/* Reset Button */}
-            <button 
-              className="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded text-sm"
-              onClick={handleReset}
-            >
-              Reset Game
-            </button>
-          </div>
+          <button 
+            className="px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded transition-colors"
+            onClick={handleReset}
+          >
+            Reset Game
+          </button>
         </div>
       </div>
       
       {/* Main Content Area */}
       <div className="flex-1 flex">
-        {/* Grid Container - Centered */}
-        <div className="flex-1 flex items-center justify-center p-4">
-          <div className="border border-gray-700 rounded-lg overflow-hidden shadow-lg">
-            <Grid 
-              grid={grid} 
-              onCellClick={handleCellClick} 
-              showCoordinates={showCoordinates}
-              showGridLines={showGridLines}
-              showCellTypes={showCellTypes}
-              cellSize={cellSize}
-            />
-          </div>
-        </div>
-        
-        {/* Right Sidebar - Tower Selection */}
-        <div className="w-64 bg-gray-800 border-l border-gray-700 p-4 overflow-y-auto">
-          <h2 className="text-white text-lg font-bold mb-4">Tower Selection</h2>
+        {/* Left Panel - Tower Selection */}
+        <div className="w-64 bg-gray-800 p-4 border-r border-gray-700">
+          <h2 className="text-white font-bold mb-4">Tower Selection</h2>
           
-          {/* Tool Selection */}
-          <div className="mb-4">
-            <h3 className="text-white text-sm font-semibold mb-2">Tool</h3>
+          <div className="space-y-3">
+            {towerTypes.map(tower => (
+              <div 
+                key={tower.id}
+                className={`p-3 rounded cursor-pointer transition-colors ${
+                  selectedTower?.id === tower.id 
+                    ? getTowerSelectionColor(tower.id)
+                    : 'bg-gray-700 hover:bg-gray-600'
+                }`}
+                onClick={() => handleTowerSelect(tower)}
+              >
+                <div className="flex justify-between items-center">
+                  <span className="text-white font-medium">{tower.name}</span>
+                  <span className="text-yellow-400 text-sm">{tower.cost}</span>
+                </div>
+                <div className="mt-1 text-xs text-gray-300">
+                  <div>Damage: {tower.damage}</div>
+                  <div>Range: {tower.range}</div>
+                </div>
+                {tower.description && (
+                  <div className="mt-1 text-xs text-gray-400">{tower.description}</div>
+                )}
+              </div>
+            ))}
+          </div>
+          
+          <div className="mt-6">
+            <h3 className="text-white font-bold mb-2">Tools</h3>
             <div className="flex space-x-2">
               <button 
-                className={`px-3 py-1 rounded ${selectedTool === 'tower' ? 'bg-blue-600 text-white' : 'bg-gray-600 text-gray-200'}`}
+                className={`px-3 py-2 rounded text-white text-sm ${
+                  selectedTool === 'tower' ? 'bg-blue-600' : 'bg-gray-700 hover:bg-gray-600'
+                }`}
                 onClick={() => setSelectedTool('tower')}
               >
                 Place Tower
               </button>
               <button 
-                className={`px-3 py-1 rounded ${selectedTool === 'remove' ? 'bg-red-600 text-white' : 'bg-gray-600 text-gray-200'}`}
+                className={`px-3 py-2 rounded text-white text-sm ${
+                  selectedTool === 'remove' ? 'bg-red-600' : 'bg-gray-700 hover:bg-gray-600'
+                }`}
                 onClick={() => setSelectedTool('remove')}
               >
                 Remove
@@ -285,70 +409,162 @@ export const Game: React.FC = () => {
             </div>
           </div>
           
-          {/* Tower List */}
-          <div>
-            <h3 className="text-white text-sm font-semibold mb-2">Available Towers</h3>
-            <div className="space-y-2">
-              {towerTypes.map(tower => {
-                // Get the tower style color for the button
-                const towerColor = tower.id === 'basic' ? '#007bff' : 
-                                  tower.id === 'sniper' ? '#dc3545' :
-                                  tower.id === 'splash' ? '#fd7e14' : '#6f42c1';
+          {/* Test Minion Controls */}
+          <div className="mt-6 p-3 bg-gray-700 rounded">
+            <h3 className="text-white font-bold mb-2">Test Minion</h3>
+            {testMinion && (
+              <div className="text-sm text-gray-300">
+                <div>Health: {Math.max(0, testMinion.health)} / {testMinion.maxHealth}</div>
+                <div>Status: {testMinion.isDead ? 'Dead' : 'Alive'}</div>
                 
-                return (
-                  <div 
-                    key={tower.id}
-                    className={`p-2 rounded transition-colors ${
-                      selectedTower?.id === tower.id 
-                        ? 'bg-opacity-80' 
-                        : 'bg-gray-700 hover:bg-gray-600'
-                    } ${
-                      resources < tower.cost ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
-                    }`}
-                    style={{
-                      backgroundColor: selectedTower?.id === tower.id ? towerColor : undefined
-                    }}
-                    onClick={() => resources >= tower.cost && handleTowerSelect(tower)}
-                  >
-                    <div className="flex justify-between">
-                      <span className="text-white font-medium">{tower.name}</span>
-                      <span className="text-yellow-400">{tower.cost}</span>
-                    </div>
-                    <div className="text-xs text-gray-300 mt-1">
-                      <div>Damage: {tower.damage}</div>
-                      <div>Range: {tower.range}</div>
-                    </div>
-                    {tower.description && (
-                      <div className="text-xs text-gray-300 mt-1 italic">
-                        {tower.description}
-                      </div>
-                    )}
+                {/* Health Slider */}
+                <div className="mt-2">
+                  <label className="block text-xs text-gray-400 mb-1">Set Health:</label>
+                  <div className="flex items-center space-x-2">
+                    <input 
+                      type="range" 
+                      min="0" 
+                      max={testMinion.maxHealth} 
+                      value={testMinion.health}
+                      onChange={(e) => {
+                        const newHealth = parseInt(e.target.value);
+                        setTestMinion(prev => {
+                          if (!prev) return prev;
+                          return {
+                            ...prev,
+                            health: newHealth,
+                            isDead: newHealth <= 0
+                          };
+                        });
+                      }}
+                      className="w-full"
+                    />
+                    <span className="text-xs">{Math.max(0, testMinion.health)}</span>
                   </div>
-                );
-              })}
-            </div>
-          </div>
-          
-          {/* Selected Tower Info */}
-          {selectedTower && (
-            <div className="mt-4 p-3 bg-blue-900 bg-opacity-50 rounded">
-              <h3 className="text-white text-sm font-semibold mb-1">Selected: {selectedTower.name}</h3>
-              <div className="text-xs text-gray-300">
-                <p>Click on an empty grid cell to place this tower.</p>
-                <p className="mt-1">Cost: <span className="text-yellow-400">{selectedTower.cost}</span></p>
+                </div>
+                
+                {/* Max Health Input */}
+                <div className="mt-2">
+                  <label className="block text-xs text-gray-400 mb-1">Max Health:</label>
+                  <div className="flex items-center space-x-2">
+                    <input 
+                      type="number" 
+                      min="1" 
+                      max="10000" 
+                      value={testMinion.maxHealth}
+                      onChange={(e) => {
+                        const newMaxHealth = Math.max(1, parseInt(e.target.value) || 1);
+                        setTestMinion(prev => {
+                          if (!prev) return prev;
+                          // Adjust current health if it's higher than new max
+                          const newHealth = Math.min(prev.health, newMaxHealth);
+                          return {
+                            ...prev,
+                            health: newHealth,
+                            maxHealth: newMaxHealth,
+                            isDead: newHealth <= 0
+                          };
+                        });
+                      }}
+                      className="w-full bg-gray-800 text-white px-2 py-1 rounded"
+                    />
+                  </div>
+                </div>
+                
+                <div className="mt-2">
+                  <button 
+                    className="w-full px-3 py-2 bg-green-600 hover:bg-green-700 text-white rounded text-sm transition-colors"
+                    onClick={() => {
+                      // Reset just the test minion
+                      const path = extractPathFromGrid(grid);
+                      if (path.length > 0) {
+                        const pathPosition = Math.floor(path.length / 2);
+                        setTestMinion({
+                          id: 'test-minion',
+                          type: 'Grunt',
+                          health: 1000,
+                          maxHealth: 1000,
+                          speed: 0,
+                          reward: 10,
+                          abilities: [],
+                          position: path[pathPosition],
+                          path: path,
+                          pathIndex: pathPosition,
+                          effects: [],
+                          isDead: false
+                        });
+                      }
+                    }}
+                  >
+                    Reset Minion
+                  </button>
+                </div>
               </div>
-            </div>
-          )}
-          
-          {/* Resources Display */}
-          <div className="mt-4 p-3 bg-gray-700 rounded">
-            <div className="text-yellow-400 font-bold">Resources: {resources}</div>
-            <div className="text-xs text-gray-300 mt-1">
-              Place towers to defend your path
-            </div>
+            )}
+          </div>
+        </div>
+        
+        {/* Main Grid Area */}
+        <div className="flex-1 p-4 flex items-center justify-center relative">
+          <div className="relative">
+            <Grid 
+              grid={grid} 
+              onCellClick={handleCellClick}
+              showCoordinates={showCoordinates}
+              showGridLines={showGridLines}
+              showCellTypes={showCellTypes}
+              cellSize={cellSize}
+            />
+            
+            {/* Render test minion */}
+            {testMinion && (
+              <TestMinion minion={testMinion} />
+            )}
+            
+            {/* Render active attacks */}
+            {activeAttacks.map(attack => (
+              <TowerAttack 
+                key={attack.id}
+                tower={attack.tower}
+                target={attack.target}
+              />
+            ))}
           </div>
         </div>
       </div>
     </div>
   );
+};
+
+// Helper function to get tower selection color
+const getTowerSelectionColor = (towerId: string) => {
+  switch (towerId) {
+    case 'basic': return 'bg-blue-700 border-2 border-blue-500';
+    case 'sniper': return 'bg-red-700 border-2 border-red-500';
+    case 'splash': return 'bg-orange-700 border-2 border-orange-500';
+    case 'slow': return 'bg-purple-700 border-2 border-purple-500';
+    default: return 'bg-blue-700 border-2 border-blue-500';
+  }
+};
+
+// Helper function to get tower cooldown based on tower type
+const getTowerCooldown = (towerId: string): number => {
+  switch (towerId) {
+    case 'basic': return 1.0; // 1 second cooldown for basic tower
+    case 'sniper': return 2.5; // 2.5 seconds cooldown for sniper (high damage, slow fire rate)
+    case 'splash': return 1.5; // 1.5 seconds cooldown for splash
+    case 'slow': return 0.8; // 0.8 seconds cooldown for slow (low damage, fast fire rate)
+    default: return 1.0;
+  }
+};
+
+// Helper function to get animation duration based on tower type
+const getAnimationDuration = (towerType: TowerType): number => {
+  switch (towerType) {
+    case 'Gunner': return 800; // 0.8 seconds for basic gunner
+    case 'Frost': return 1000; // 1 second for frost tower
+    case 'Flamethrower': return 1200; // 1.2 seconds for flamethrower
+    case 'Tesla': return 600; // 0.6 seconds for tesla (fast electricity)
+    default: return 1000;
+  }
 }; 
