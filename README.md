@@ -1,36 +1,98 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Path of Doom
 
-## Getting Started
+A modern, web-based tower defense game built with Next.js, React, TypeScript, and React Three Fiber.
 
-First, run the development server:
+## Features
+
+- Dynamic grid system with procedural level creation
+- Four unique tower types with special abilities
+- Four different minion types with varying stats and abilities
+- Wave-based gameplay with increasing difficulty
+- Four visual themes to choose from
+- Responsive design that works on desktop and mobile
+
+## Tech Stack
+
+- **Frontend Framework**: Next.js + React + TypeScript
+- **State Management**: Zustand
+- **Animations**: Framer Motion
+- **Styling**: Tailwind CSS
+- **Persistence**: LocalStorage (for game progress and high scores)
+
+## Installation
+
+1. Clone the repository:
+
+```bash
+git clone https://github.com/yourusername/path-of-doom.git
+cd path-of-doom
+```
+
+2. Install dependencies:
+
+```bash
+npm install
+```
+
+3. Run the development server:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+4. Open [http://localhost:3000](http://localhost:3000) in your browser to play the game.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## How to Play
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+1. **Start the Game**: Click the "Start Game" button to begin.
+2. **Place Towers**: Select a tower type from the bottom menu and click on an empty grid cell to place it.
+3. **Upgrade Towers**: Click on an existing tower to upgrade it.
+4. **Survive Waves**: Defend against waves of minions by strategically placing and upgrading towers.
+5. **Win the Game**: Complete all waves to win!
 
-## Learn More
+## Tower Types
 
-To learn more about Next.js, take a look at the following resources:
+- **Gunner**: Basic tower with balanced stats
+- **Frost Tower**: Slows down minions
+- **Flamethrower**: Deals damage over time with burn effect
+- **Tesla Coil**: Chain lightning that can hit multiple minions
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Minion Types
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- **Grunt**: Basic minion with balanced stats
+- **Runner**: Fast but weak minion
+- **Tank**: Slow but high health minion with armor
+- **Cursed**: Explodes on death, damaging nearby towers
 
-## Deploy on Vercel
+## Game Mechanics
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+- Each tower can be upgraded to increase its damage, range, and special abilities
+- Minions follow a predefined path from the entrance to the exit
+- If a minion reaches the exit, you lose a life
+- When you run out of lives, the game is over
+- Complete all waves to win the game
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Development
+
+### Project Structure
+
+- `src/game/components`: React components for the game UI
+- `src/game/core`: Core game logic and constants
+- `src/game/hooks`: Custom React hooks
+- `src/game/store`: Zustand state management
+- `src/game/types`: TypeScript type definitions
+- `src/game/utils`: Utility functions
+
+### Adding New Content
+
+- **New Tower Types**: Add to the `TowerType` type in `src/game/types/index.ts` and add stats in `src/game/core/constants.ts`
+- **New Minion Types**: Add to the `MinionType` type in `src/game/types/index.ts` and add stats in `src/game/core/constants.ts`
+- **New Themes**: Add to the `THEME_COLORS` object in `src/game/core/constants.ts`
+
+## License
+
+MIT
+
+## Credits
+
+Created by [Your Name]
