@@ -1,5 +1,6 @@
 import { GridCell } from '../types/gridTypes';
 import { GRID_WIDTH, GRID_HEIGHT } from '../core/gridConstants';
+import { Tower, Minion } from '../types';
 
 /**
  * Generate a unique ID
@@ -11,7 +12,7 @@ export const generateId = (): string => {
 /**
  * Create a new grid with the specified width and height
  */
-export const createGrid = (width: number, height: number): GridCell[][] => {
+export const createGrid = (width: number, height: number = width): GridCell[][] => {
   const grid: GridCell[][] = [];
 
   for (let y = 0; y < height; y++) {
@@ -161,4 +162,87 @@ export const isValidTowerPosition = (
 
   // Check if the cell is empty
   return grid[y][x].type === 'Empty';
+};
+
+/**
+ * Calculate the Manhattan distance between two points
+ */
+export const calculateDistance = (
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number
+): number => {
+  return Math.abs(x1 - x2) + Math.abs(y1 - y2);
+};
+
+/**
+ * Find the closest minion to a tower within its range
+ */
+export const findClosestMinion = (
+  tower: Tower,
+  minions: Minion[]
+): Minion | undefined => {
+  // Filter out dead minions
+  const aliveMinions = minions.filter(minion => !minion.isDead);
+  
+  if (aliveMinions.length === 0) {
+    return undefined;
+  }
+  
+  // Get all minions within range
+  const minionsInRange = aliveMinions.filter(minion => {
+    // If tower has pre-calculated range cells, use those for faster lookup
+    if (tower.rangeCells) {
+      const minionCellKey = `${Math.floor(minion.position.x)},${Math.floor(minion.position.y)}`;
+      return tower.rangeCells.has(minionCellKey);
+    }
+    
+    // Otherwise calculate distance
+    const distance = calculateDistance(
+      tower.position.x,
+      tower.position.y,
+      minion.position.x,
+      minion.position.y
+    );
+    
+    return distance <= tower.range;
+  });
+  
+  if (minionsInRange.length === 0) {
+    return undefined;
+  }
+  
+  // Find the minion furthest along the path
+  return minionsInRange.reduce((furthest, current) => {
+    return current.pathIndex > furthest.pathIndex ? current : furthest;
+  }, minionsInRange[0]);
+};
+
+/**
+ * Get all cells within a tower's range
+ */
+export const getCellsInTowerRange = (
+  towerX: number,
+  towerY: number,
+  range: number,
+  gridWidth: number,
+  gridHeight: number
+): Set<string> => {
+  const cellsInRange = new Set<string>();
+  
+  // Check all cells in a square around the tower
+  for (let y = Math.max(0, towerY - range); y <= Math.min(gridHeight - 1, towerY + range); y++) {
+    for (let x = Math.max(0, towerX - range); x <= Math.min(gridWidth - 1, towerX + range); x++) {
+      // Calculate Manhattan distance (grid distance) from tower to this cell
+      const distance = calculateDistance(x, y, towerX, towerY);
+      
+      // Include the cell if it's within range (using Manhattan distance for grid-based range)
+      if (distance <= range) {
+        cellsInRange.add(`${x},${y}`);
+      }
+    }
+  }
+  
+  return cellsInRange;
 }; 

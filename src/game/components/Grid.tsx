@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { CELL_SIZE } from '../core/gridConstants';
 import { GridCell } from '../types/gridTypes';
+import { getCellsInTowerRange } from '../utils';
 
 // Tower visual styles based on tower type
 const TOWER_STYLES = {
@@ -159,22 +160,11 @@ export const Grid: React.FC<GridProps> = ({
   
   // Calculate cells within tower range
   const getCellsInRange = (towerX: number, towerY: number, range: number) => {
-    const cellsInRange: { x: number, y: number }[] = [];
-    
-    // Check all cells in a square around the tower
-    for (let y = Math.max(0, towerY - range); y <= Math.min(grid.length - 1, towerY + range); y++) {
-      for (let x = Math.max(0, towerX - range); x <= Math.min(grid[0].length - 1, towerX + range); x++) {
-        // Calculate Manhattan distance (grid distance) from tower to this cell
-        const distance = Math.abs(x - towerX) + Math.abs(y - towerY);
-        
-        // Include the cell if it's within range (using Manhattan distance for grid-based range)
-        if (distance <= range) {
-          cellsInRange.push({ x, y });
-        }
-      }
-    }
-    
-    return cellsInRange;
+    return Array.from(getCellsInTowerRange(towerX, towerY, range, grid[0].length, grid.length))
+      .map(coordStr => {
+        const [x, y] = coordStr.split(',').map(Number);
+        return { x, y };
+      });
   };
   
   // Get cells in range of the hovered tower
@@ -187,8 +177,8 @@ export const Grid: React.FC<GridProps> = ({
     const { x, y, type, id, towerId } = cell;
     const isHovered = hoveredCell?.x === x && hoveredCell?.y === y;
     
-    // Check if this cell is in range of the hovered tower
-    const isInRange = cellsInRange.some(rangeCell => rangeCell.x === x && rangeCell.y === y);
+    // Check if this cell is within range of the hovered tower
+    const isInRange = hoveredTower && cellsInRange.some(c => c.x === cell.x && c.y === cell.y);
     
     // Determine cell color based on type
     let backgroundColor = 'transparent';

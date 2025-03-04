@@ -1,5 +1,6 @@
 import { create } from 'zustand';
-import { GameState, GridCell, Minion, MinionType, Tower, TowerType, Wave } from '../types';
+import { GameState, Minion, MinionType, Tower, TowerType, Wave } from '../types';
+import { GridCell, Grid } from '../types/gridTypes';
 import { 
   GRID_SIZE, 
   INITIAL_LIVES, 
@@ -16,7 +17,8 @@ import {
   extractPathFromGrid, 
   findClosestMinion, 
   generateId, 
-  isValidTowerPosition 
+  isValidTowerPosition,
+  getCellsInTowerRange
 } from '../utils';
 
 const initialGrid = createDefaultPath(createGrid(GRID_SIZE));
@@ -107,6 +109,9 @@ export const useGameStore = create<GameState & {
       return; // Not enough money
     }
     
+    // Calculate cells in range
+    const rangeCells = getCellsInTowerRange(x, y, towerStats.range, grid[0].length, grid.length);
+    
     // Create a new tower
     const newTower: Tower = {
       id: generateId(),
@@ -119,6 +124,7 @@ export const useGameStore = create<GameState & {
       cost: towerStats.cost,
       position: { x, y },
       ability: towerStats.ability,
+      rangeCells: rangeCells,
     };
     
     // Update the grid
@@ -139,7 +145,7 @@ export const useGameStore = create<GameState & {
   },
   
   upgradeTower: (towerId) => {
-    const { towers, money } = get();
+    const { towers, money, grid } = get();
     
     const towerIndex = towers.findIndex((t) => t.id === towerId);
     if (towerIndex === -1) return;
@@ -151,14 +157,27 @@ export const useGameStore = create<GameState & {
       return; // Not enough money
     }
     
+    // Calculate new range
+    const newRange = tower.range * TOWER_UPGRADE_MULTIPLIERS.range;
+    
+    // Recalculate cells in range
+    const rangeCells = getCellsInTowerRange(
+      tower.position.x, 
+      tower.position.y, 
+      newRange, 
+      grid[0].length, 
+      grid.length
+    );
+    
     // Create upgraded tower
     const upgradedTower: Tower = {
       ...tower,
       level: tower.level + 1,
       damage: tower.damage * TOWER_UPGRADE_MULTIPLIERS.damage,
-      range: tower.range * TOWER_UPGRADE_MULTIPLIERS.range,
+      range: newRange,
       cooldown: tower.cooldown * TOWER_UPGRADE_MULTIPLIERS.cooldown,
       cost: upgradeCost,
+      rangeCells: rangeCells,
     };
     
     // Update towers array
@@ -248,6 +267,23 @@ export const useGameStore = create<GameState & {
     if (gameStatus !== 'playing') {
       return;
     }
+    
+    // Create a map of cell coordinates to minions for efficient tower targeting
+    const minionPositions = new Map<string, Minion[]>();
+    
+    minions.forEach(minion => {
+      if (!minion.isDead) {
+        const cellX = Math.floor(minion.position.x);
+        const cellY = Math.floor(minion.position.y);
+        const cellKey = `${cellX},${cellY}`;
+        
+        if (!minionPositions.has(cellKey)) {
+          minionPositions.set(cellKey, []);
+        }
+        
+        minionPositions.get(cellKey)!.push(minion);
+      }
+    });
     
     // Update wave spawning
     if (wave.spawned < wave.total) {

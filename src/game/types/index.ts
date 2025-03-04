@@ -62,6 +62,7 @@ export interface Tower {
   position: { x: number; y: number };
   target?: string;
   ability: TowerAbility;
+  rangeCells?: Set<string>;
 }
 
 // Wave Types
