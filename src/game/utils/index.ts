@@ -245,4 +245,11 @@ export const getCellsInTowerRange = (
   }
   
   return cellsInRange;
+};
+
+/**
+ * Format money value with $ sign and commas
+ */
+export const formatMoney = (amount: number): string => {
+  return `$${amount.toLocaleString()}`;
 }; 
