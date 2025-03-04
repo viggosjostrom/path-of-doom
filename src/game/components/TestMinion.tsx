@@ -31,13 +31,24 @@ export const TestMinion: React.FC<TestMinionProps> = ({ minion }) => {
   // Handle death animation
   useEffect(() => {
     if (minion.health <= 0 && !isDying) {
+      console.log(`Minion ${minion.id} is dying, starting animation`);
       setIsDying(true);
       // Wait for death animation to complete before hiding
       setTimeout(() => {
+        console.log(`Minion ${minion.id} death animation complete, hiding`);
         setIsVisible(false);
-      }, 800);
+      }, 1000);
     }
-  }, [minion.health, isDying]);
+  }, [minion.health, isDying, minion.id]);
+  
+  // Reset animation state if minion is revived
+  useEffect(() => {
+    if (minion.health > 0 && isDying) {
+      console.log(`Minion ${minion.id} was revived, resetting animation state`);
+      setIsDying(false);
+      setIsVisible(true);
+    }
+  }, [minion.health, isDying, minion.id]);
   
   // Skip rendering if minion is dead and animation completed
   if (minion.isDead && !isVisible) {
@@ -45,7 +56,7 @@ export const TestMinion: React.FC<TestMinionProps> = ({ minion }) => {
   }
   
   return (
-    <AnimatePresence>
+    <AnimatePresence mode="wait">
       <motion.div
         className="absolute"
         style={{
@@ -73,7 +84,7 @@ export const TestMinion: React.FC<TestMinionProps> = ({ minion }) => {
         }
         exit={{ opacity: 0, scale: 0, rotate: 360 }}
         transition={{ 
-          duration: isDying ? 0.8 : 0.3,
+          duration: isDying ? 1 : 0.3,
           ease: isDying ? "backIn" : "easeOut"
         }}
       >
@@ -97,7 +108,7 @@ export const TestMinion: React.FC<TestMinionProps> = ({ minion }) => {
           }
           transition={isDying 
             ? { 
-                duration: 0.5 
+                duration: 0.8 
               } 
             : {
                 repeat: Infinity,
@@ -112,25 +123,26 @@ export const TestMinion: React.FC<TestMinionProps> = ({ minion }) => {
           {/* Death particles */}
           {isDying && (
             <>
-              {[...Array(8)].map((_, i) => (
+              {[...Array(12)].map((_, i) => (
                 <motion.div
                   key={`particle-${i}`}
-                  className="absolute rounded-full bg-red-500"
+                  className="absolute rounded-full"
                   style={{
-                    width: 4,
-                    height: 4,
+                    width: 6,
+                    height: 6,
                     top: '50%',
                     left: '50%',
                     zIndex: 31,
+                    backgroundColor: i % 3 === 0 ? '#ef4444' : i % 3 === 1 ? '#f97316' : '#fbbf24',
                   }}
                   animate={{
-                    x: Math.cos(i * Math.PI / 4) * CELL_SIZE,
-                    y: Math.sin(i * Math.PI / 4) * CELL_SIZE,
+                    x: Math.cos(i * Math.PI / 6) * CELL_SIZE * 0.8,
+                    y: Math.sin(i * Math.PI / 6) * CELL_SIZE * 0.8,
                     opacity: [1, 0],
                     scale: [1, 0],
                   }}
                   transition={{
-                    duration: 0.8,
+                    duration: 1,
                     ease: "easeOut",
                   }}
                 />

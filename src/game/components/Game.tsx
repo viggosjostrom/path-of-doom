@@ -167,6 +167,10 @@ export const Game: React.FC = () => {
                     const newHealth = Math.max(0, minion.health - tower.damage);
                     const isDead = newHealth <= 0;
                     
+                    if (isDead) {
+                      console.log(`Minion ${minion.id} died from ${tower.damage} damage`);
+                    }
+                    
                     return {
                       ...minion,
                       health: newHealth,
@@ -631,7 +635,7 @@ export const Game: React.FC = () => {
             />
             
             {/* Render test minions */}
-            {testMinions.map(minion => !minion.isDead && (
+            {testMinions.map(minion => (
               <TestMinion key={minion.id} minion={minion} />
             ))}
             
