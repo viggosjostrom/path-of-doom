@@ -37,7 +37,7 @@ export const Game: React.FC = () => {
   
   // Tower and minion state
   const [towers, setTowers] = useState<Tower[]>([]);
-  const [testMinion, setTestMinion] = useState<Minion | null>(null);
+  const [testMinions, setTestMinions] = useState<Minion[]>([]);
   const [activeAttacks, setActiveAttacks] = useState<{tower: Tower, target: Minion, id: string}[]>([]);
   
   // Animation frame reference
@@ -49,16 +49,16 @@ export const Game: React.FC = () => {
     createDefaultPath(createGrid(GRID_WIDTH, GRID_HEIGHT))
   );
   
-  // Create test minion on path
+  // Create test minions on path - only run once on initial mount
   useEffect(() => {
     const path = extractPathFromGrid(grid);
     if (path.length > 0) {
-      // Place minion in the middle of the path
+      // Create initial test minion in the middle of the path
       const pathPosition = Math.floor(path.length / 2);
       const minionPosition = path[pathPosition];
       
-      const newMinion: Minion = {
-        id: 'test-minion',
+      const initialMinion: Minion = {
+        id: 'test-minion-1',
         type: 'Grunt',
         health: 1000,
         maxHealth: 1000,
@@ -72,13 +72,14 @@ export const Game: React.FC = () => {
         isDead: false
       };
       
-      setTestMinion(newMinion);
+      setTestMinions([initialMinion]);
     }
-  }, [grid]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Empty dependency array means this only runs once on mount
   
   // Game update loop
   useEffect(() => {
-    if (!testMinion) return;
+    if (testMinions.length === 0) return;
     
     const updateGame = (timestamp: number) => {
       const now = Date.now();
@@ -100,56 +101,80 @@ export const Game: React.FC = () => {
           }
           
           // Check if tower can attack
-          if (tower.currentCooldown <= 0 && testMinion && !testMinion.isDead) {
-            // Calculate distance to minion
-            const dx = tower.position.x - Math.floor(testMinion.position.x);
-            const dy = tower.position.y - Math.floor(testMinion.position.y);
-            const distance = Math.abs(dx) + Math.abs(dy);
+          if (tower.currentCooldown <= 0) {
+            // Find alive minions
+            const aliveMinions = testMinions.filter(minion => !minion.isDead);
             
-            // If minion is in range, attack (but only if this tower hasn't attacked this frame)
-            if (distance <= tower.range && !attackingTowerIds.has(tower.id)) {
+            // For area effect towers (Flamethrower), find all minions in range
+            const isAreaEffect = tower.type === 'Flamethrower';
+            const minionsInRange: Minion[] = [];
+            
+            for (const minion of aliveMinions) {
+              const dx = tower.position.x - Math.floor(minion.position.x);
+              const dy = tower.position.y - Math.floor(minion.position.y);
+              const distance = Math.abs(dx) + Math.abs(dy);
+              
+              if (distance <= tower.range) {
+                minionsInRange.push(minion);
+                
+                // For non-area effect towers, only target one minion
+                if (!isAreaEffect) break;
+              }
+            }
+            
+            // If there are minions in range and this tower hasn't attacked this frame
+            if (minionsInRange.length > 0 && !attackingTowerIds.has(tower.id)) {
               // Mark this tower as attacking this frame
               attackingTowerIds.add(tower.id);
               
-              console.log(`Tower at (${tower.position.x}, ${tower.position.y}) attacking minion at (${testMinion.position.x}, ${testMinion.position.y}), distance: ${distance}, range: ${tower.range}`);
+              // For each minion in range (or just the first one for non-area effect towers)
+              const targetsToAttack = isAreaEffect ? minionsInRange : [minionsInRange[0]];
               
-              // Create attack animation with a truly unique ID
-              const attackId = `attack-${tower.id}-${Date.now()}-${Math.random().toString(36).substring(2, 10)}`;
-              
-              // Calculate animation duration based on distance
-              // Base duration plus additional time per tile of distance
-              const animationDuration = 100 + (distance * 150); // 250ms for 1 tile, 400ms for 2 tiles, etc.
-              
-              setActiveAttacks(prev => [
-                ...prev, 
-                {
-                  tower,
-                  target: testMinion,
-                  id: attackId
-                }
-              ]);
-              
-              // Remove attack after animation completes
-              setTimeout(() => {
-                setActiveAttacks(prev => prev.filter(attack => attack.id !== attackId));
-              }, animationDuration);
-              
-              // Apply damage after animation
-              setTimeout(() => {
-                setTestMinion(prev => {
-                  if (!prev || prev.isDead) return prev;
-                  
-                  console.log(`Tower ${tower.type} dealing ${tower.damage} damage to minion with ${prev.health} health`);
-                  const newHealth = Math.max(0, prev.health - tower.damage);
-                  const isDead = newHealth <= 0;
-                  
-                  return {
-                    ...prev,
-                    health: newHealth,
-                    isDead
-                  };
-                });
-              }, animationDuration - 100); // Apply damage just before animation ends
+              for (const target of targetsToAttack) {
+                console.log(`Tower at (${tower.position.x}, ${tower.position.y}) attacking minion at (${target.position.x}, ${target.position.y})`);
+                
+                // Create attack animation with a truly unique ID
+                const attackId = `attack-${tower.id}-${target.id}-${Date.now()}-${Math.random().toString(36).substring(2, 10)}`;
+                
+                // Calculate distance for animation duration
+                const dx = tower.position.x - Math.floor(target.position.x);
+                const dy = tower.position.y - Math.floor(target.position.y);
+                const distance = Math.abs(dx) + Math.abs(dy);
+                
+                // Calculate animation duration based on distance
+                const animationDuration = 100 + (distance * 150); // 250ms for 1 tile, 400ms for 2 tiles, etc.
+                
+                setActiveAttacks(prev => [
+                  ...prev, 
+                  {
+                    tower,
+                    target,
+                    id: attackId
+                  }
+                ]);
+                
+                // Remove attack after animation completes
+                setTimeout(() => {
+                  setActiveAttacks(prev => prev.filter(attack => attack.id !== attackId));
+                }, animationDuration);
+                
+                // Apply damage after animation
+                setTimeout(() => {
+                  setTestMinions(prev => prev.map(minion => {
+                    if (minion.id !== target.id || minion.isDead) return minion;
+                    
+                    console.log(`Tower ${tower.type} dealing ${tower.damage} damage to minion with ${minion.health} health`);
+                    const newHealth = Math.max(0, minion.health - tower.damage);
+                    const isDead = newHealth <= 0;
+                    
+                    return {
+                      ...minion,
+                      health: newHealth,
+                      isDead
+                    };
+                  }));
+                }, animationDuration - 100); // Apply damage just before animation ends
+              }
               
               // Reset tower cooldown
               return {
@@ -177,10 +202,12 @@ export const Game: React.FC = () => {
         cancelAnimationFrame(animationFrameRef.current);
       }
     };
-  }, [testMinion]);
+  }, [testMinions]);
   
   // Handle cell click
   const handleCellClick = (x: number, y: number) => {
+    console.log(`Cell clicked at (${x}, ${y}), current minions:`, testMinions);
+    
     // Toggle cell type based on selected tool
     setGrid(prevGrid => {
       const newGrid = [...prevGrid.map(row => [...row])];
@@ -217,6 +244,9 @@ export const Game: React.FC = () => {
             
             // Deduct resources
             setResources(prev => Math.max(0, prev - selectedTower.cost));
+            
+            // Log minions after tower placement
+            console.log("Tower placed, current minions:", testMinions);
           } else {
             // Not enough resources - could show a notification here
             console.log("Not enough resources!");
@@ -239,6 +269,7 @@ export const Game: React.FC = () => {
             type: 'Empty',
             towerId: undefined
           };
+          
           // Refund some resources
           setResources(prev => prev + refundAmount);
         }
@@ -257,12 +288,12 @@ export const Game: React.FC = () => {
     setSelectedTower(null);
     setTowers([]);
     
-    // Reset test minion
+    // Reset test minions
     const path = extractPathFromGrid(createDefaultPath(createGrid(GRID_WIDTH, GRID_HEIGHT)));
     if (path.length > 0) {
       const pathPosition = Math.floor(path.length / 2);
-      setTestMinion({
-        id: 'test-minion',
+      setTestMinions([{
+        id: 'test-minion-1',
         type: 'Grunt',
         health: 1000,
         maxHealth: 1000,
@@ -274,7 +305,7 @@ export const Game: React.FC = () => {
         pathIndex: pathPosition,
         effects: [],
         isDead: false
-      });
+      }]);
     }
   };
   
@@ -340,6 +371,100 @@ export const Game: React.FC = () => {
   // Handle tower selection
   const handleTowerSelect = (tower: TowerSelection) => {
     setSelectedTower(tower);
+  };
+  
+  // Add a function to add a new test minion
+  const addTestMinion = () => {
+    const path = extractPathFromGrid(grid);
+    if (path.length === 0) return;
+    
+    // Find a position on the path that doesn't already have a minion
+    // Try to place it adjacent to an existing minion if possible
+    let pathPosition = -1;
+    const existingPositions = new Set(testMinions.map(m => m.pathIndex));
+    
+    // First try to find a position adjacent to an existing minion
+    for (const minion of testMinions) {
+      const adjacentPositions = [minion.pathIndex - 1, minion.pathIndex + 1];
+      for (const pos of adjacentPositions) {
+        if (pos >= 0 && pos < path.length && !existingPositions.has(pos)) {
+          pathPosition = pos;
+          break;
+        }
+      }
+      if (pathPosition !== -1) break;
+    }
+    
+    // If no adjacent position found, place it in the middle or at a random position
+    if (pathPosition === -1) {
+      if (testMinions.length === 0) {
+        // If no minions exist, place in the middle
+        pathPosition = Math.floor(path.length / 2);
+      } else {
+        // Otherwise find a random unoccupied position
+        const availablePositions = Array.from(
+          { length: path.length }, 
+          (_, i) => i
+        ).filter(i => !existingPositions.has(i));
+        
+        if (availablePositions.length > 0) {
+          pathPosition = availablePositions[Math.floor(Math.random() * availablePositions.length)];
+        } else {
+          // All positions are occupied, can't add more
+          return;
+        }
+      }
+    }
+    
+    const minionPosition = path[pathPosition];
+    const newMinion: Minion = {
+      id: `test-minion-${testMinions.length + 1}-${Date.now()}`,
+      type: 'Grunt',
+      health: 1000,
+      maxHealth: 1000,
+      speed: 0,
+      reward: 10,
+      abilities: [],
+      position: minionPosition,
+      path: path,
+      pathIndex: pathPosition,
+      effects: [],
+      isDead: false
+    };
+    
+    console.log("Adding new minion:", newMinion);
+    setTestMinions(prev => {
+      const updated = [...prev, newMinion];
+      console.log("Updated minions:", updated);
+      return updated;
+    });
+  };
+  
+  // Add a function to reset all test minions
+  const resetTestMinions = () => {
+    const path = extractPathFromGrid(grid);
+    if (path.length === 0) return;
+    
+    // Reset to a single minion in the middle of the path
+    const pathPosition = Math.floor(path.length / 2);
+    const minionPosition = path[pathPosition];
+    
+    const initialMinion: Minion = {
+      id: 'test-minion-1',
+      type: 'Grunt',
+      health: 1000,
+      maxHealth: 1000,
+      speed: 0,
+      reward: 10,
+      abilities: [],
+      position: minionPosition,
+      path: path,
+      pathIndex: pathPosition,
+      effects: [],
+      isDead: false
+    };
+    
+    setTestMinions([initialMinion]);
   };
   
   return (
@@ -418,94 +543,76 @@ export const Game: React.FC = () => {
           
           {/* Test Minion Controls */}
           <div className="mt-6 p-3 bg-gray-700 rounded">
-            <h3 className="text-white font-bold mb-2">Test Minion</h3>
-            {testMinion && (
-              <div className="text-sm text-gray-300">
-                <div>Health: {Math.max(0, testMinion.health)} / {testMinion.maxHealth}</div>
-                <div>Status: {testMinion.isDead ? 'Dead' : 'Alive'}</div>
-                
-                {/* Health Slider */}
-                <div className="mt-2">
-                  <label className="block text-xs text-gray-400 mb-1">Set Health:</label>
-                  <div className="flex items-center space-x-2">
-                    <input 
-                      type="range" 
-                      min="0" 
-                      max={testMinion.maxHealth} 
-                      value={testMinion.health}
-                      onChange={(e) => {
-                        const newHealth = parseInt(e.target.value);
-                        setTestMinion(prev => {
-                          if (!prev) return prev;
-                          return {
-                            ...prev,
-                            health: newHealth,
-                            isDead: newHealth <= 0
-                          };
-                        });
+            <h3 className="text-white font-bold mb-2">Test Minions</h3>
+            <div className="flex space-x-2 mb-3">
+              <button 
+                className="px-3 py-1 bg-green-600 hover:bg-green-700 text-white rounded text-sm"
+                onClick={addTestMinion}
+              >
+                Add Minion
+              </button>
+              <button 
+                className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-sm"
+                onClick={resetTestMinions}
+              >
+                Reset Minions
+              </button>
+            </div>
+            
+            {testMinions.length > 0 && (
+              <div className="space-y-4">
+                {testMinions.map((minion, index) => (
+                  <div key={minion.id} className="text-sm text-gray-300 border border-gray-600 p-2 rounded">
+                    <div className="flex justify-between items-center mb-1">
+                      <div className="font-medium">Minion #{index + 1}</div>
+                      <div className="text-xs">
+                        {minion.isDead ? (
+                          <span className="text-red-400">Dead</span>
+                        ) : (
+                          <span className="text-green-400">Alive</span>
+                        )}
+                      </div>
+                    </div>
+                    
+                    <div>Health: {Math.max(0, minion.health)} / {minion.maxHealth}</div>
+                    
+                    {/* Health Slider */}
+                    <div className="mt-2">
+                      <label className="block text-xs text-gray-400 mb-1">Set Health:</label>
+                      <div className="flex items-center space-x-2">
+                        <input 
+                          type="range" 
+                          min="0" 
+                          max={minion.maxHealth} 
+                          value={minion.health}
+                          onChange={(e) => {
+                            const newHealth = parseInt(e.target.value);
+                            setTestMinions(prev => prev.map(m => {
+                              if (m.id !== minion.id) return m;
+                              return {
+                                ...m,
+                                health: newHealth,
+                                isDead: newHealth <= 0
+                              };
+                            }));
+                          }}
+                          className="w-full"
+                        />
+                        <span className="text-xs">{Math.max(0, minion.health)}</span>
+                      </div>
+                    </div>
+                    
+                    {/* Remove button */}
+                    <button 
+                      className="mt-2 px-2 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-xs"
+                      onClick={() => {
+                        setTestMinions(prev => prev.filter(m => m.id !== minion.id));
                       }}
-                      className="w-full"
-                    />
-                    <span className="text-xs">{Math.max(0, testMinion.health)}</span>
+                    >
+                      Remove
+                    </button>
                   </div>
-                </div>
-                
-                {/* Max Health Input */}
-                <div className="mt-2">
-                  <label className="block text-xs text-gray-400 mb-1">Max Health:</label>
-                  <div className="flex items-center space-x-2">
-                    <input 
-                      type="number" 
-                      min="1" 
-                      max="10000" 
-                      value={testMinion.maxHealth}
-                      onChange={(e) => {
-                        const newMaxHealth = Math.max(1, parseInt(e.target.value) || 1);
-                        setTestMinion(prev => {
-                          if (!prev) return prev;
-                          // Adjust current health if it's higher than new max
-                          const newHealth = Math.min(prev.health, newMaxHealth);
-                          return {
-                            ...prev,
-                            health: newHealth,
-                            maxHealth: newMaxHealth,
-                            isDead: newHealth <= 0
-                          };
-                        });
-                      }}
-                      className="w-full bg-gray-800 text-white px-2 py-1 rounded"
-                    />
-                  </div>
-                </div>
-                
-                <div className="mt-2">
-                  <button 
-                    className="w-full px-3 py-2 bg-green-600 hover:bg-green-700 text-white rounded text-sm transition-colors"
-                    onClick={() => {
-                      // Reset just the test minion
-                      const path = extractPathFromGrid(grid);
-                      if (path.length > 0) {
-                        const pathPosition = Math.floor(path.length / 2);
-                        setTestMinion({
-                          id: 'test-minion',
-                          type: 'Grunt',
-                          health: 1000,
-                          maxHealth: 1000,
-                          speed: 0,
-                          reward: 10,
-                          abilities: [],
-                          position: path[pathPosition],
-                          path: path,
-                          pathIndex: pathPosition,
-                          effects: [],
-                          isDead: false
-                        });
-                      }
-                    }}
-                  >
-                    Reset Minion
-                  </button>
-                </div>
+                ))}
               </div>
             )}
           </div>
@@ -523,10 +630,10 @@ export const Game: React.FC = () => {
               cellSize={cellSize}
             />
             
-            {/* Render test minion */}
-            {testMinion && !testMinion.isDead && (
-              <TestMinion minion={testMinion} />
-            )}
+            {/* Render test minions */}
+            {testMinions.map(minion => !minion.isDead && (
+              <TestMinion key={minion.id} minion={minion} />
+            ))}
             
             {/* Render active attacks */}
             {activeAttacks.map(attack => (
