@@ -78,78 +78,85 @@ export const Game: React.FC = () => {
   
   // Game update loop
   useEffect(() => {
+    if (!testMinion) return;
+    
     const updateGame = (timestamp: number) => {
       const now = Date.now();
-      const deltaTime = (now - lastUpdateTimeRef.current) / 1000; // Convert to seconds
+      const deltaTime = now - lastUpdateTimeRef.current;
       lastUpdateTimeRef.current = now;
       
-      // Update towers (cooldowns, attacks)
+      // Update towers (cooldowns, targeting, etc)
       setTowers(prevTowers => {
-        // Track which towers will attack this frame to prevent multiple attacks at once
-        const attackingTowers: string[] = [];
+        // Track which towers are attacking this frame to prevent duplicates
+        const attackingTowerIds = new Set<string>();
         
         return prevTowers.map(tower => {
-          // If tower is on cooldown, reduce it
+          // Reduce cooldown
           if (tower.currentCooldown > 0) {
-            return {
+            tower = {
               ...tower,
-              currentCooldown: Math.max(0, tower.currentCooldown - deltaTime)
+              currentCooldown: Math.max(0, tower.currentCooldown - deltaTime / 1000)
             };
           }
           
-          // Check if tower can attack the test minion
-          if (testMinion && !testMinion.isDead) {
-            const dx = tower.position.x - testMinion.position.x;
-            const dy = tower.position.y - testMinion.position.y;
-            const distance = Math.abs(dx) + Math.abs(dy); // Manhattan distance
+          // Check if tower can attack
+          if (tower.currentCooldown <= 0 && testMinion && !testMinion.isDead) {
+            // Calculate distance to minion
+            const dx = tower.position.x - Math.floor(testMinion.position.x);
+            const dy = tower.position.y - Math.floor(testMinion.position.y);
+            const distance = Math.abs(dx) + Math.abs(dy);
             
-            if (distance <= tower.range) {
-              // Tower can attack - but only allow one tower to attack per frame
-              // to prevent multiple towers killing the minion at once
-              if (!attackingTowers.includes(tower.id)) {
-                attackingTowers.push(tower.id);
-                
-                // Use a more unique ID with a random component
-                const attackId = `attack-${tower.id}-${now}-${Math.random().toString(36).substring(2, 8)}`;
-                
-                // Calculate animation duration based on tower type
-                const animationDuration = getAnimationDuration(tower.type);
-                
-                // Add attack animation
-                setActiveAttacks(prev => [
-                  ...prev, 
-                  { tower, target: testMinion, id: attackId }
-                ]);
-                
-                // Remove attack animation after animation completes
-                setTimeout(() => {
-                  setActiveAttacks(prev => prev.filter(a => a.id !== attackId));
-                }, animationDuration);
-                
-                // Damage the minion - with a delay to ensure animations complete first
-                setTimeout(() => {
-                  setTestMinion(prev => {
-                    if (!prev || prev.isDead) return prev;
-                    
-                    console.log(`Tower ${tower.type} dealing ${tower.damage} damage to minion with ${prev.health} health`);
-                    const newHealth = Math.max(0, prev.health - tower.damage);
-                    const isDead = newHealth <= 0;
-                    
-                    return {
-                      ...prev,
-                      health: newHealth,
-                      isDead
-                    };
-                  });
-                }, animationDuration - 100); // Apply damage just before animation ends
-                
-                // Reset tower cooldown
-                return {
-                  ...tower,
-                  currentCooldown: tower.cooldown,
-                  lastAttackTime: now
-                };
-              }
+            // If minion is in range, attack (but only if this tower hasn't attacked this frame)
+            if (distance <= tower.range && !attackingTowerIds.has(tower.id)) {
+              // Mark this tower as attacking this frame
+              attackingTowerIds.add(tower.id);
+              
+              console.log(`Tower at (${tower.position.x}, ${tower.position.y}) attacking minion at (${testMinion.position.x}, ${testMinion.position.y}), distance: ${distance}, range: ${tower.range}`);
+              
+              // Create attack animation with a truly unique ID
+              const attackId = `attack-${tower.id}-${Date.now()}-${Math.random().toString(36).substring(2, 10)}`;
+              
+              // Calculate animation duration based on distance
+              // Base duration plus additional time per tile of distance
+              const animationDuration = 100 + (distance * 150); // 250ms for 1 tile, 400ms for 2 tiles, etc.
+              
+              setActiveAttacks(prev => [
+                ...prev, 
+                {
+                  tower,
+                  target: testMinion,
+                  id: attackId
+                }
+              ]);
+              
+              // Remove attack after animation completes
+              setTimeout(() => {
+                setActiveAttacks(prev => prev.filter(attack => attack.id !== attackId));
+              }, animationDuration);
+              
+              // Apply damage after animation
+              setTimeout(() => {
+                setTestMinion(prev => {
+                  if (!prev || prev.isDead) return prev;
+                  
+                  console.log(`Tower ${tower.type} dealing ${tower.damage} damage to minion with ${prev.health} health`);
+                  const newHealth = Math.max(0, prev.health - tower.damage);
+                  const isDead = newHealth <= 0;
+                  
+                  return {
+                    ...prev,
+                    health: newHealth,
+                    isDead
+                  };
+                });
+              }, animationDuration - 100); // Apply damage just before animation ends
+              
+              // Reset tower cooldown
+              return {
+                ...tower,
+                currentCooldown: tower.cooldown,
+                lastAttackTime: now
+              };
             }
           }
           
@@ -517,7 +524,7 @@ export const Game: React.FC = () => {
             />
             
             {/* Render test minion */}
-            {testMinion && (
+            {testMinion && !testMinion.isDead && (
               <TestMinion minion={testMinion} />
             )}
             

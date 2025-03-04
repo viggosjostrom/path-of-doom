@@ -198,12 +198,12 @@ export const findClosestMinion = (
       return tower.rangeCells.has(minionCellKey);
     }
     
-    // Otherwise calculate distance
+    // Otherwise calculate distance - ensure we're using the same distance calculation as the range highlighting
     const distance = calculateDistance(
       tower.position.x,
       tower.position.y,
-      minion.position.x,
-      minion.position.y
+      Math.floor(minion.position.x),
+      Math.floor(minion.position.y)
     );
     
     return distance <= tower.range;
