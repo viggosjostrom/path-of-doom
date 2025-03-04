@@ -30,7 +30,7 @@ export const Game: React.FC = () => {
   const [showGridStats, setShowGridStats] = useState(false);
   
   // Game state
-  const [resources, setResources] = useState(100);
+  const [resources, setResources] = useState(500);
   const [wave, setWave] = useState(1);
   const [lives, setLives] = useState(20);
   const [selectedTower, setSelectedTower] = useState<TowerSelection | null>(null);
@@ -38,7 +38,7 @@ export const Game: React.FC = () => {
   // Tower and minion state
   const [towers, setTowers] = useState<Tower[]>([]);
   const [testMinions, setTestMinions] = useState<Minion[]>([]);
-  const [activeAttacks, setActiveAttacks] = useState<{tower: Tower, target: Minion, id: string}[]>([]);
+  const [activeAttacks, setActiveAttacks] = useState<{id: string, tower: Tower, target: Minion}[]>([]);
   const [isMovementActive, setIsMovementActive] = useState(false);
   const [movementSpeed, setMovementSpeed] = useState(1); // Tiles per second
   
@@ -224,9 +224,9 @@ export const Game: React.FC = () => {
                 setActiveAttacks(prev => [
                   ...prev, 
                   {
+                    id: attackId,
                     tower,
-                    target,
-                    id: attackId
+                    target
                   }
                 ]);
                 
@@ -362,12 +362,16 @@ export const Game: React.FC = () => {
   
   // Reset grid
   const handleReset = () => {
+    // Reset the game state
     setGrid(createDefaultPath(createGrid(GRID_WIDTH, GRID_HEIGHT)));
-    setResources(100);
+    setTowers([]);
+    setTestMinions([]);
+    setActiveAttacks([]);
+    setSelectedTower(null);
+    setSelectedTool('tower');
+    setResources(500);
     setWave(1);
     setLives(20);
-    setSelectedTower(null);
-    setTowers([]);
     
     // Reset test minions
     const path = extractPathFromGrid(createDefaultPath(createGrid(GRID_WIDTH, GRID_HEIGHT)));
@@ -549,6 +553,27 @@ export const Game: React.FC = () => {
     setTestMinions([initialMinion]);
   };
   
+  // Handle death animation
+  useEffect(() => {
+    if (testMinions.length === 0) return;
+    
+    // Check for newly dead minions
+    testMinions.forEach(minion => {
+      if (minion.health <= 0 && !minion.isDead) {
+        console.log(`Minion ${minion.id} died`);
+        
+        // Mark as dead
+        setTestMinions(prev => prev.map(m => {
+          if (m.id !== minion.id) return m;
+          return { ...m, isDead: true };
+        }));
+        
+        // Award money for killing the minion
+        setResources(prev => prev + 25);
+      }
+    });
+  }, [testMinions]);
+  
   return (
     <div className="min-h-screen flex flex-col bg-gray-900">
       {/* Game Header */}
@@ -570,7 +595,7 @@ export const Game: React.FC = () => {
       </div>
       
       {/* Main Content Area */}
-      <div className="flex-1 flex">
+      <div className="flex-1 flex h-screen">
         {/* Left Panel - Tower Selection */}
         <div className="w-64 bg-gray-800 p-4 border-r border-gray-700">
           <h2 className="text-white font-bold mb-4">Tower Selection</h2>
@@ -671,67 +696,70 @@ export const Game: React.FC = () => {
             </div>
             
             {testMinions.length > 0 && (
-              <div className="space-y-4">
-                {testMinions.map((minion, index) => (
-                  <div key={minion.id} className="text-sm text-gray-300 border border-gray-600 p-2 rounded">
-                    <div className="flex justify-between items-center mb-1">
-                      <div className="font-medium">Minion #{index + 1}</div>
-                      <div className="text-xs">
-                        {minion.isDead ? (
-                          <span className="text-red-400">Dead</span>
-                        ) : (
-                          <span className="text-green-400">Alive</span>
-                        )}
+              <div className="mt-4">
+                <h4 className="text-white text-sm font-medium mb-2">Active Minions</h4>
+                <div className="space-y-4 max-h-80 overflow-y-auto pr-2 custom-scrollbar">
+                  {testMinions.map((minion, index) => (
+                    <div key={minion.id} className="text-sm text-gray-300 border border-gray-600 p-2 rounded">
+                      <div className="flex justify-between items-center mb-1">
+                        <div className="font-medium">Minion #{index + 1}</div>
+                        <div className="text-xs">
+                          {minion.isDead ? (
+                            <span className="text-red-400">Dead</span>
+                          ) : (
+                            <span className="text-green-400">Alive</span>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                    
-                    <div>Health: {Math.max(0, minion.health)} / {minion.maxHealth}</div>
-                    <div>Position: Tile {Math.floor(minion.pathIndex)} ({minion.pathIndex.toFixed(2)})</div>
-                    
-                    {/* Health Slider */}
-                    <div className="mt-2">
-                      <label className="block text-xs text-gray-400 mb-1">Set Health:</label>
-                      <div className="flex items-center space-x-2">
-                        <input 
-                          type="range" 
-                          min="0" 
-                          max={minion.maxHealth} 
-                          value={minion.health}
-                          onChange={(e) => {
-                            const newHealth = parseInt(e.target.value);
-                            setTestMinions(prev => prev.map(m => {
-                              if (m.id !== minion.id) return m;
-                              return {
-                                ...m,
-                                health: newHealth,
-                                isDead: newHealth <= 0
-                              };
-                            }));
-                          }}
-                          className="w-full"
-                        />
-                        <span className="text-xs">{Math.max(0, minion.health)}</span>
+                      
+                      <div>Health: {Math.max(0, minion.health)} / {minion.maxHealth}</div>
+                      <div>Position: Tile {Math.floor(minion.pathIndex)} ({minion.pathIndex.toFixed(2)})</div>
+                      
+                      {/* Health Slider */}
+                      <div className="mt-2">
+                        <label className="block text-xs text-gray-400 mb-1">Set Health:</label>
+                        <div className="flex items-center space-x-2">
+                          <input 
+                            type="range" 
+                            min="0" 
+                            max={minion.maxHealth} 
+                            value={minion.health}
+                            onChange={(e) => {
+                              const newHealth = parseInt(e.target.value);
+                              setTestMinions(prev => prev.map(m => {
+                                if (m.id !== minion.id) return m;
+                                return {
+                                  ...m,
+                                  health: newHealth,
+                                  isDead: newHealth <= 0
+                                };
+                              }));
+                            }}
+                            className="w-full"
+                          />
+                          <span className="text-xs">{Math.max(0, minion.health)}</span>
+                        </div>
                       </div>
+                      
+                      {/* Remove button */}
+                      <button 
+                        className="mt-2 px-2 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-xs"
+                        onClick={() => {
+                          setTestMinions(prev => prev.filter(m => m.id !== minion.id));
+                        }}
+                      >
+                        Remove
+                      </button>
                     </div>
-                    
-                    {/* Remove button */}
-                    <button 
-                      className="mt-2 px-2 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-xs"
-                      onClick={() => {
-                        setTestMinions(prev => prev.filter(m => m.id !== minion.id));
-                      }}
-                    >
-                      Remove
-                    </button>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
             )}
           </div>
         </div>
         
         {/* Main Grid Area */}
-        <div className="flex-1 p-4 flex items-center justify-center relative">
+        <div className="flex-1 p-4 flex items-center justify-center relative overflow-hidden">
           <div className="relative">
             <Grid 
               grid={grid} 
