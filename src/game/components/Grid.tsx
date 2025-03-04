@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { CELL_SIZE } from '../core/gridConstants';
 import { GridCell } from '../types/gridTypes';
 
@@ -9,22 +9,38 @@ const TOWER_STYLES = {
   basic: {
     color: '#007bff', // Blue
     innerColor: '#80bdff',
-    symbol: '●' // Circle
+    symbol: '●', // Circle
+    name: 'Basic Tower',
+    damage: 5,
+    range: 3,
+    level: 1
   },
   sniper: {
     color: '#dc3545', // Red
     innerColor: '#f8d7da',
-    symbol: '◆' // Diamond
+    symbol: '◆', // Diamond
+    name: 'Sniper Tower',
+    damage: 20,
+    range: 6,
+    level: 1
   },
   splash: {
     color: '#fd7e14', // Orange
     innerColor: '#ffe5d0',
-    symbol: '✱' // Burst
+    symbol: '✱', // Burst
+    name: 'Splash Tower',
+    damage: 10,
+    range: 2,
+    level: 1
   },
   slow: {
     color: '#6f42c1', // Purple
     innerColor: '#d5c8e5',
-    symbol: '❄' // Snowflake
+    symbol: '❄', // Snowflake
+    name: 'Slow Tower',
+    damage: 2,
+    range: 3,
+    level: 1
   }
 };
 
@@ -48,6 +64,8 @@ export const Grid: React.FC<GridProps> = ({
   // Track hovered cell for enhanced UI feedback
   const [hoveredCell, setHoveredCell] = useState<{ x: number, y: number } | null>(null);
   const [gridScale, setGridScale] = useState(1);
+  const gridRef = useRef<HTMLDivElement>(null);
+  const tooltipRef = useRef<HTMLDivElement>(null);
   
   // Calculate grid dimensions
   const gridWidth = grid[0].length * cellSize;
@@ -91,10 +109,86 @@ export const Grid: React.FC<GridProps> = ({
     return TOWER_STYLES[towerType as keyof typeof TOWER_STYLES] || TOWER_STYLES.basic;
   };
   
+  // Get hovered tower info
+  const getHoveredTowerInfo = () => {
+    if (!hoveredCell) return null;
+    
+    const cell = grid[hoveredCell.y][hoveredCell.x];
+    if (cell.type !== 'Tower' || !cell.towerId) return null;
+    
+    const towerStyle = getTowerStyle(cell.towerId);
+    const towerType = cell.towerId.split('-')[0];
+    
+    return {
+      ...towerStyle,
+      type: towerType,
+      position: { x: hoveredCell.x, y: hoveredCell.y }
+    };
+  };
+  
+  // Get the hovered tower info
+  const hoveredTower = getHoveredTowerInfo();
+  
+  // Calculate tooltip position to ensure it stays within the grid
+  const getTooltipPosition = () => {
+    if (!hoveredTower || !gridRef.current || !tooltipRef.current) {
+      return { left: 0, top: 0 };
+    }
+    
+    const gridRect = gridRef.current.getBoundingClientRect();
+    const tooltipRect = tooltipRef.current.getBoundingClientRect();
+    
+    // Default position (to the right of the tower)
+    let left = (hoveredTower.position.x + 1) * cellSize;
+    let top = hoveredTower.position.y * cellSize;
+    
+    // Check if tooltip would go off the right edge
+    if (left + tooltipRect.width > gridWidth) {
+      // Place to the left of the tower instead
+      left = (hoveredTower.position.x - tooltipRect.width / cellSize) * cellSize;
+    }
+    
+    // Check if tooltip would go off the bottom edge
+    if (top + tooltipRect.height > gridHeight) {
+      // Place above the tower instead
+      top = (hoveredTower.position.y + 1) * cellSize - tooltipRect.height;
+    }
+    
+    return { left, top };
+  };
+  
+  // Calculate cells within tower range
+  const getCellsInRange = (towerX: number, towerY: number, range: number) => {
+    const cellsInRange: { x: number, y: number }[] = [];
+    
+    // Check all cells in a square around the tower
+    for (let y = Math.max(0, towerY - range); y <= Math.min(grid.length - 1, towerY + range); y++) {
+      for (let x = Math.max(0, towerX - range); x <= Math.min(grid[0].length - 1, towerX + range); x++) {
+        // Calculate Manhattan distance (grid distance) from tower to this cell
+        const distance = Math.abs(x - towerX) + Math.abs(y - towerY);
+        
+        // Include the cell if it's within range (using Manhattan distance for grid-based range)
+        if (distance <= range) {
+          cellsInRange.push({ x, y });
+        }
+      }
+    }
+    
+    return cellsInRange;
+  };
+  
+  // Get cells in range of the hovered tower
+  const cellsInRange = hoveredTower 
+    ? getCellsInRange(hoveredTower.position.x, hoveredTower.position.y, hoveredTower.range)
+    : [];
+  
   // Render grid cells
   const renderCell = (cell: GridCell) => {
     const { x, y, type, id, towerId } = cell;
     const isHovered = hoveredCell?.x === x && hoveredCell?.y === y;
+    
+    // Check if this cell is in range of the hovered tower
+    const isInRange = cellsInRange.some(rangeCell => rangeCell.x === x && rangeCell.y === y);
     
     // Determine cell color based on type
     let backgroundColor = 'transparent';
@@ -108,6 +202,7 @@ export const Grid: React.FC<GridProps> = ({
       case 'Tower':
         // Tower cells are transparent to show the tower visualization
         backgroundColor = 'transparent';
+        cursor = 'pointer'; // Make tower cells have pointer cursor for hover
         break;
       case 'Empty':
         backgroundColor = 'transparent';
@@ -124,6 +219,10 @@ export const Grid: React.FC<GridProps> = ({
     // Get tower style if this is a tower cell
     const towerStyle = type === 'Tower' ? getTowerStyle(towerId) : null;
     
+    // Apply range highlight if this cell is in range of the hovered tower
+    // Don't highlight the tower cell itself
+    const isRangeHighlighted = isInRange && !(hoveredTower && hoveredTower.position.x === x && hoveredTower.position.y === y);
+    
     return (
       <div
         key={id}
@@ -133,10 +232,15 @@ export const Grid: React.FC<GridProps> = ({
           height: cellSize,
           left: x * cellSize,
           top: y * cellSize,
-          backgroundColor,
-          borderColor,
+          backgroundColor: isRangeHighlighted 
+            ? `${hoveredTower?.color}20` // Add 20 hex for 12.5% opacity
+            : backgroundColor,
+          borderColor: isRangeHighlighted 
+            ? hoveredTower?.color || borderColor 
+            : borderColor,
           cursor,
           boxShadow: isHovered ? '0 0 5px rgba(255, 255, 255, 0.5)' : 'none',
+          zIndex: type === 'Tower' ? 10 : (isRangeHighlighted ? 6 : 5), // Higher z-index for towers and range cells
         }}
         onClick={() => onCellClick && onCellClick(x, y)}
         onMouseEnter={() => setHoveredCell({ x, y })}
@@ -179,13 +283,27 @@ export const Grid: React.FC<GridProps> = ({
             <div className="w-1/2 h-1/2 rounded-full bg-gray-600 opacity-30"></div>
           </div>
         )}
+        
+        {/* Range cell indicator */}
+        {isRangeHighlighted && (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div 
+              className="w-full h-full opacity-20 transition-opacity duration-200"
+              style={{ backgroundColor: hoveredTower?.color }}
+            />
+          </div>
+        )}
       </div>
     );
   };
   
+  // Get tooltip position
+  const tooltipPosition = getTooltipPosition();
+  
   return (
     <div className="relative transform origin-center transition-transform duration-300 ease-in-out">
       <div 
+        ref={gridRef}
         className="relative"
         style={{ 
           width: gridWidth, 
@@ -210,6 +328,36 @@ export const Grid: React.FC<GridProps> = ({
         
         {/* Cells */}
         {grid.flat().map(renderCell)}
+        
+        {/* Tower Info Tooltip */}
+        {hoveredTower && (
+          <div 
+            ref={tooltipRef}
+            className="absolute bg-gray-800 border rounded shadow-lg p-2 z-20 pointer-events-none"
+            style={{
+              left: tooltipPosition.left,
+              top: tooltipPosition.top,
+              borderColor: hoveredTower.color,
+              minWidth: '150px',
+            }}
+          >
+            <div className="text-white font-bold" style={{ color: hoveredTower.color }}>
+              {hoveredTower.name}
+            </div>
+            <div className="text-xs text-gray-300">
+              <div>Type: {hoveredTower.type}</div>
+              <div>Level: {hoveredTower.level}</div>
+              <div>Damage: {hoveredTower.damage}</div>
+              <div>Range: {hoveredTower.range} tiles</div>
+              <div className="mt-1 text-xs italic">Special: {
+                hoveredTower.type === 'basic' ? 'None' :
+                hoveredTower.type === 'sniper' ? 'High damage, long range' :
+                hoveredTower.type === 'splash' ? 'Area damage' :
+                'Slows enemies'
+              }</div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
