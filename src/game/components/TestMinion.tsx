@@ -55,6 +55,22 @@ export const TestMinion: React.FC<TestMinionProps> = ({ minion }) => {
     return null;
   }
   
+  // Determine if the minion is moving to the right or down/up
+  const getMovementDirection = () => {
+    const pathIndex = Math.floor(minion.pathIndex);
+    if (pathIndex + 1 >= minion.path.length) return 'right'; // Default to right at the end
+    
+    const currentPos = minion.path[pathIndex];
+    const nextPos = minion.path[pathIndex + 1];
+    
+    if (nextPos.x > currentPos.x) return 'right';
+    if (nextPos.x < currentPos.x) return 'left';
+    if (nextPos.y > currentPos.y) return 'down';
+    return 'up';
+  };
+  
+  const direction = getMovementDirection();
+  
   return (
     <AnimatePresence mode="wait">
       <motion.div
@@ -62,30 +78,25 @@ export const TestMinion: React.FC<TestMinionProps> = ({ minion }) => {
         style={{
           width: CELL_SIZE,
           height: CELL_SIZE,
-          left: x,
-          top: y,
           zIndex: 30,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
         }}
         initial={{ opacity: 0, scale: 0 }}
-        animate={isDying 
-          ? { 
-              opacity: 0, 
-              scale: 0, 
-              rotate: 360,
-              y: y - 20 
-            } 
-          : { 
-              opacity: 1, 
-              scale: 1 
-            }
-        }
+        animate={{ 
+          opacity: isDying ? 0 : 1, 
+          scale: isDying ? 0 : 1,
+          rotate: isDying ? 360 : 0,
+          left: x,
+          top: isDying ? y - 20 : y
+        }}
         exit={{ opacity: 0, scale: 0, rotate: 360 }}
         transition={{ 
           duration: isDying ? 1 : 0.3,
-          ease: isDying ? "backIn" : "easeOut"
+          ease: isDying ? "backIn" : "easeOut",
+          left: { duration: 0.2, ease: "linear" },
+          top: { duration: 0.2, ease: "linear" }
         }}
       >
         {/* Minion body */}
@@ -104,6 +115,9 @@ export const TestMinion: React.FC<TestMinionProps> = ({ minion }) => {
               } 
             : {
                 scale: [1, 1.05, 1],
+                rotate: direction === 'right' ? 0 : 
+                        direction === 'left' ? 180 : 
+                        direction === 'down' ? 90 : -90
               }
           }
           transition={isDying 
@@ -113,6 +127,7 @@ export const TestMinion: React.FC<TestMinionProps> = ({ minion }) => {
             : {
                 repeat: Infinity,
                 duration: 2,
+                rotate: { duration: 0.3 }
               }
           }
         >
@@ -165,6 +180,26 @@ export const TestMinion: React.FC<TestMinionProps> = ({ minion }) => {
               transition={{ duration: 0.3 }}
             />
           </div>
+        )}
+        
+        {/* Movement trail effect */}
+        {!isDying && minion.speed > 0 && (
+          <motion.div
+            className="absolute rounded-full opacity-30"
+            style={{
+              width: CELL_SIZE * 0.4,
+              height: CELL_SIZE * 0.4,
+              backgroundColor: getHealthColor(),
+              zIndex: 29,
+            }}
+            initial={{ scale: 0.8, opacity: 0.5 }}
+            animate={{ scale: 0, opacity: 0 }}
+            transition={{ 
+              duration: 0.5,
+              repeat: Infinity,
+              repeatDelay: 0.2
+            }}
+          />
         )}
       </motion.div>
     </AnimatePresence>

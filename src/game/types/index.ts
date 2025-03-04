@@ -31,8 +31,8 @@ export interface Minion {
   speed: number;
   reward: number;
   abilities: MinionAbility[];
-  position: { x: number; y: number };
-  path: { x: number; y: number }[];
+  position: { x: number; y: number; id: string };
+  path: { x: number; y: number; id: string }[];
   pathIndex: number;
   effects: { type: string; duration: number }[];
   isDead: boolean;

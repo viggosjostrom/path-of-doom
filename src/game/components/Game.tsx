@@ -39,10 +39,13 @@ export const Game: React.FC = () => {
   const [towers, setTowers] = useState<Tower[]>([]);
   const [testMinions, setTestMinions] = useState<Minion[]>([]);
   const [activeAttacks, setActiveAttacks] = useState<{tower: Tower, target: Minion, id: string}[]>([]);
+  const [isMovementActive, setIsMovementActive] = useState(false);
+  const [movementSpeed, setMovementSpeed] = useState(1); // Tiles per second
   
   // Animation frame reference
   const animationFrameRef = useRef<number | null>(null);
   const lastUpdateTimeRef = useRef<number>(Date.now());
+  const lastMinionSpawnTimeRef = useRef<number>(Date.now());
   
   // Initialize grid with a default path
   const [grid, setGrid] = useState<GridCell[][]>(() => 
@@ -86,6 +89,80 @@ export const Game: React.FC = () => {
       const deltaTime = now - lastUpdateTimeRef.current;
       lastUpdateTimeRef.current = now;
       
+      // Update minion positions if movement is active
+      if (isMovementActive) {
+        setTestMinions(prevMinions => {
+          // Calculate how much to move based on speed and time
+          const moveAmount = (movementSpeed * deltaTime) / 1000; // Convert to tiles per millisecond
+          
+          return prevMinions.map(minion => {
+            if (minion.isDead) return minion;
+            
+            // Calculate new path index
+            const newPathIndex = minion.pathIndex + moveAmount;
+            
+            // If minion reached the end of the path, mark it as "escaped"
+            if (newPathIndex >= minion.path.length) {
+              console.log(`Minion ${minion.id} reached the end of the path`);
+              return {
+                ...minion,
+                isDead: true, // Use isDead to remove it from rendering
+                pathIndex: minion.path.length - 1 // Keep at last position for animation
+              };
+            }
+            
+            // Get the current and next path positions
+            const currentPathPos = Math.floor(minion.pathIndex);
+            const nextPathPos = Math.min(Math.floor(newPathIndex), minion.path.length - 1);
+            
+            // If we're moving to a new tile, update the position
+            if (nextPathPos !== currentPathPos) {
+              console.log(`Minion ${minion.id} moving from tile ${currentPathPos} to ${nextPathPos}`);
+            }
+            
+            // Get the exact position based on path index
+            const exactPosition = getPositionOnPath(minion.path, newPathIndex);
+            
+            return {
+              ...minion,
+              pathIndex: newPathIndex,
+              position: exactPosition
+            };
+          });
+        });
+        
+        // Spawn new minions periodically if we have fewer than the max
+        const timeSinceLastSpawn = now - lastMinionSpawnTimeRef.current;
+        const minionsAlive = testMinions.filter(m => !m.isDead).length;
+        const maxMinions = 3; // Maximum number of minions on the path at once
+        const spawnInterval = 3000; // Time between spawns in ms
+        
+        if (minionsAlive < maxMinions && timeSinceLastSpawn > spawnInterval) {
+          const path = extractPathFromGrid(grid);
+          if (path.length > 0) {
+            // Spawn at the start of the path
+            const newMinion: Minion = {
+              id: `test-minion-${Date.now()}`,
+              type: 'Grunt',
+              health: 1000,
+              maxHealth: 1000,
+              speed: movementSpeed,
+              reward: 10,
+              abilities: [],
+              position: path[0],
+              path: path,
+              pathIndex: 0,
+              effects: [],
+              isDead: false
+            };
+            
+            console.log(`Spawning new minion at the start of the path`);
+            setTestMinions(prev => [...prev, newMinion]);
+            lastMinionSpawnTimeRef.current = now;
+          }
+        }
+      }
+      
       // Update towers (cooldowns, targeting, etc)
       setTowers(prevTowers => {
         // Track which towers are attacking this frame to prevent duplicates
@@ -110,8 +187,8 @@ export const Game: React.FC = () => {
             const minionsInRange: Minion[] = [];
             
             for (const minion of aliveMinions) {
-              const dx = tower.position.x - Math.floor(minion.position.x);
-              const dy = tower.position.y - Math.floor(minion.position.y);
+              const dx = tower.position.x - minion.position.x;
+              const dy = tower.position.y - minion.position.y;
               const distance = Math.abs(dx) + Math.abs(dy);
               
               if (distance <= tower.range) {
@@ -206,7 +283,7 @@ export const Game: React.FC = () => {
         cancelAnimationFrame(animationFrameRef.current);
       }
     };
-  }, [testMinions]);
+  }, [testMinions, isMovementActive, movementSpeed]);
   
   // Handle cell click
   const handleCellClick = (x: number, y: number) => {
@@ -262,7 +339,7 @@ export const Game: React.FC = () => {
           // Find the tower type to calculate refund
           const towerId = newGrid[y][x].towerId;
           const towerType = towerId?.split('-')[0];
-          const tower = towerTypes.find(t => t.id === towerType);
+          const tower = towers.find(t => t.id === towerId);
           const refundAmount = tower ? Math.floor(tower.cost / 2) : 5;
           
           // Remove tower from towers array
@@ -377,81 +454,78 @@ export const Game: React.FC = () => {
     setSelectedTower(tower);
   };
   
-  // Add a function to add a new test minion
-  const addTestMinion = () => {
+  // Helper function to get position on path based on path index (can be fractional)
+  const getPositionOnPath = (path: {x: number, y: number, id: string}[], pathIndex: number): {x: number, y: number, id: string} => {
+    // Handle edge cases
+    if (pathIndex <= 0) return path[0];
+    if (pathIndex >= path.length - 1) return path[path.length - 1];
+    
+    // Get the current and next positions
+    const currentIndex = Math.floor(pathIndex);
+    const nextIndex = Math.min(currentIndex + 1, path.length - 1);
+    const fraction = pathIndex - currentIndex;
+    
+    // Interpolate between current and next positions
+    return {
+      x: path[currentIndex].x + (path[nextIndex].x - path[currentIndex].x) * fraction,
+      y: path[currentIndex].y + (path[nextIndex].y - path[currentIndex].y) * fraction,
+      id: path[currentIndex].id // Use the current cell's ID
+    };
+  };
+  
+  // Add a function to spawn a test minion at the start of the path
+  const spawnTestMinionAtStart = () => {
+    // Get the path with cell IDs
     const path = extractPathFromGrid(grid);
     if (path.length === 0) return;
     
-    // Find a position on the path that doesn't already have a minion
-    // Try to place it adjacent to an existing minion if possible
-    let pathPosition = -1;
-    const existingPositions = new Set(testMinions.map(m => m.pathIndex));
+    // Add default id if it doesn't exist (for backward compatibility)
+    const pathWithIds = path.map(point => ({
+      x: point.x,
+      y: point.y,
+      id: point.id || `cell-${point.x}-${point.y}`
+    }));
     
-    // First try to find a position adjacent to an existing minion
-    for (const minion of testMinions) {
-      const adjacentPositions = [minion.pathIndex - 1, minion.pathIndex + 1];
-      for (const pos of adjacentPositions) {
-        if (pos >= 0 && pos < path.length && !existingPositions.has(pos)) {
-          pathPosition = pos;
-          break;
-        }
-      }
-      if (pathPosition !== -1) break;
-    }
-    
-    // If no adjacent position found, place it in the middle or at a random position
-    if (pathPosition === -1) {
-      if (testMinions.length === 0) {
-        // If no minions exist, place in the middle
-        pathPosition = Math.floor(path.length / 2);
-      } else {
-        // Otherwise find a random unoccupied position
-        const availablePositions = Array.from(
-          { length: path.length }, 
-          (_, i) => i
-        ).filter(i => !existingPositions.has(i));
-        
-        if (availablePositions.length > 0) {
-          pathPosition = availablePositions[Math.floor(Math.random() * availablePositions.length)];
-        } else {
-          // All positions are occupied, can't add more
-          return;
-        }
-      }
-    }
-    
-    const minionPosition = path[pathPosition];
+    // Spawn at the start of the path
     const newMinion: Minion = {
       id: `test-minion-${testMinions.length + 1}-${Date.now()}`,
       type: 'Grunt',
       health: 1000,
       maxHealth: 1000,
-      speed: 0,
+      speed: movementSpeed,
       reward: 10,
       abilities: [],
-      position: minionPosition,
-      path: path,
-      pathIndex: pathPosition,
+      position: {
+        x: pathWithIds[0].x,
+        y: pathWithIds[0].y,
+        id: pathWithIds[0].id
+      },
+      path: pathWithIds,
+      pathIndex: 0,
       effects: [],
       isDead: false
     };
     
-    console.log("Adding new minion:", newMinion);
-    setTestMinions(prev => {
-      const updated = [...prev, newMinion];
-      console.log("Updated minions:", updated);
-      return updated;
-    });
+    console.log("Spawning new minion at the start of the path", pathWithIds[0]);
+    setTestMinions(prev => [...prev, newMinion]);
   };
   
   // Add a function to reset all test minions
   const resetTestMinions = () => {
+    // Get the path with cell IDs
     const path = extractPathFromGrid(grid);
     if (path.length === 0) return;
     
+    // Add default id if it doesn't exist (for backward compatibility)
+    const pathWithIds = path.map(point => ({
+      x: point.x,
+      y: point.y,
+      id: point.id || `cell-${point.x}-${point.y}`
+    }));
+    
     // Reset to a single minion in the middle of the path
-    const pathPosition = Math.floor(path.length / 2);
-    const minionPosition = path[pathPosition];
+    const pathPosition = Math.floor(pathWithIds.length / 2);
+    const minionPosition = pathWithIds[pathPosition];
     
     const initialMinion: Minion = {
       id: 'test-minion-1',
@@ -461,7 +535,11 @@ export const Game: React.FC = () => {
       speed: 0,
       reward: 10,
       abilities: [],
-      position: minionPosition,
+      position: {
+        x: minionPosition.x,
+        y: minionPosition.y,
+        id: minionPosition.id
+      },
       path: path,
       pathIndex: pathPosition,
       effects: [],
@@ -551,9 +629,9 @@ export const Game: React.FC = () => {
             <div className="flex space-x-2 mb-3">
               <button 
                 className="px-3 py-1 bg-green-600 hover:bg-green-700 text-white rounded text-sm"
-                onClick={addTestMinion}
+                onClick={spawnTestMinionAtStart}
               >
-                Add Minion
+                Spawn Minion
               </button>
               <button 
                 className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-sm"
@@ -561,6 +639,35 @@ export const Game: React.FC = () => {
               >
                 Reset Minions
               </button>
+            </div>
+            
+            {/* Movement controls */}
+            <div className="mb-3 p-2 bg-gray-800 rounded">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-white text-sm">Movement:</span>
+                <button 
+                  className={`px-3 py-1 ${isMovementActive ? 'bg-red-600 hover:bg-red-700' : 'bg-green-600 hover:bg-green-700'} text-white rounded text-xs`}
+                  onClick={() => setIsMovementActive(!isMovementActive)}
+                >
+                  {isMovementActive ? 'Stop' : 'Start'} Movement
+                </button>
+              </div>
+              
+              <div className="flex flex-col space-y-1">
+                <label className="text-xs text-gray-400">Speed (tiles/second):</label>
+                <div className="flex items-center space-x-2">
+                  <input 
+                    type="range" 
+                    min="0.5" 
+                    max="5" 
+                    step="0.5"
+                    value={movementSpeed}
+                    onChange={(e) => setMovementSpeed(parseFloat(e.target.value))}
+                    className="w-full"
+                  />
+                  <span className="text-white text-xs">{movementSpeed}</span>
+                </div>
+              </div>
             </div>
             
             {testMinions.length > 0 && (
@@ -579,6 +686,7 @@ export const Game: React.FC = () => {
                     </div>
                     
                     <div>Health: {Math.max(0, minion.health)} / {minion.maxHealth}</div>
+                    <div>Position: Tile {Math.floor(minion.pathIndex)} ({minion.pathIndex.toFixed(2)})</div>
                     
                     {/* Health Slider */}
                     <div className="mt-2">

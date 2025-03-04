@@ -75,8 +75,8 @@ export const createDefaultPath = (grid: GridCell[][]): GridCell[][] => {
 /**
  * Extract path coordinates from grid
  */
-export const extractPathFromGrid = (grid: GridCell[][]): { x: number; y: number }[] => {
-  const path: { x: number; y: number }[] = [];
+export const extractPathFromGrid = (grid: GridCell[][]): { x: number; y: number; id: string }[] => {
+  const path: { x: number; y: number; id: string }[] = [];
   const width = grid[0].length;
   const height = grid.length;
   
@@ -94,7 +94,7 @@ export const extractPathFromGrid = (grid: GridCell[][]): { x: number; y: number 
   }
   
   // Start with the leftmost path cell
-  path.push({ x: startX, y: startY });
+  path.push({ x: startX, y: startY, id: grid[startY][startX].id });
   
   // Simple algorithm to follow the path
   let currentX = startX;
@@ -124,7 +124,7 @@ export const extractPathFromGrid = (grid: GridCell[][]): { x: number; y: number 
         previousY = currentY;
         currentX = dir.x;
         currentY = dir.y;
-        path.push({ x: currentX, y: currentY });
+        path.push({ x: currentX, y: currentY, id: grid[currentY][currentX].id });
         found = true;
         break;
       }
