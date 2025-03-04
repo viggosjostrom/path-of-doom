@@ -72,6 +72,39 @@ export const Grid: React.FC<GridProps> = ({
   const gridWidth = grid[0].length * cellSize;
   const gridHeight = grid.length * cellSize;
   
+  // CSS styles for different cell types
+  const cellStyles = `
+    .grid-cell {
+      position: absolute;
+      transition: all 150ms;
+      transform: translateZ(0);
+      backface-visibility: hidden;
+      will-change: transform;
+    }
+    
+    .grid-cell-path {
+      background-color: #555;
+      background-image: 
+        linear-gradient(335deg, #666 23px, transparent 23px),
+        linear-gradient(155deg, #666 23px, transparent 23px);
+      background-size: 58px 58px;
+      background-position: 0px 2px, 4px 35px;
+    }
+    
+    .grid-cell-empty {
+      background-color: #4a7c10;
+      background-image: 
+        radial-gradient(circle at 30% 40%, #5c9e12 8%, transparent 8%),
+        radial-gradient(circle at 70% 60%, #5c9e12 8%, transparent 8%);
+      background-size: 24px 24px;
+      background-position: 0 0, 12px 12px;
+    }
+    
+    .grid-cell-empty:hover {
+      background-color: #5c9e12;
+    }
+  `;
+  
   // Calculate scale factor for responsive sizing
   useEffect(() => {
     const calculateScale = () => {
@@ -184,25 +217,22 @@ export const Grid: React.FC<GridProps> = ({
     let backgroundColor = 'transparent';
     let borderColor = showGridLines ? '#333' : 'transparent';
     let cursor = 'default';
+    let cellClassName = '';
     
-    switch (type) {
-      case 'Path':
-        backgroundColor = '#444';
-        break;
-      case 'Tower':
-        // Tower cells are transparent to show the tower visualization
-        backgroundColor = 'transparent';
-        cursor = 'pointer'; // Make tower cells have pointer cursor for hover
-        break;
-      case 'Empty':
-        backgroundColor = 'transparent';
-        cursor = onCellClick ? 'pointer' : 'default';
-        break;
+    // Apply cell styles based on type
+    if (type === 'Path') {
+      cellClassName = 'grid-cell-path';
+    } else if (type === 'Empty') {
+      cellClassName = 'grid-cell-empty';
+      cursor = onCellClick ? 'pointer' : 'default';
+    } else if (type === 'Tower') {
+      // Tower cells are transparent to show the tower visualization
+      backgroundColor = 'transparent';
+      cursor = 'pointer'; // Make tower cells have pointer cursor for hover
     }
     
     // Enhanced hover effect
     if (isHovered && type === 'Empty') {
-      backgroundColor = 'rgba(255, 255, 255, 0.1)';
       borderColor = '#666';
     }
     
@@ -216,7 +246,7 @@ export const Grid: React.FC<GridProps> = ({
     return (
       <div
         key={id}
-        className="absolute border transition-all duration-150"
+        className={`grid-cell border ${cellClassName}`}
         style={{
           width: cellSize,
           height: cellSize,
@@ -224,7 +254,7 @@ export const Grid: React.FC<GridProps> = ({
           top: y * cellSize,
           backgroundColor: isRangeHighlighted 
             ? `${hoveredTower?.color}20` // Add 20 hex for 12.5% opacity
-            : backgroundColor,
+            : (type === 'Tower' ? backgroundColor : undefined), // Only set backgroundColor for Tower cells
           borderColor: isRangeHighlighted 
             ? hoveredTower?.color || borderColor 
             : borderColor,
@@ -238,14 +268,14 @@ export const Grid: React.FC<GridProps> = ({
       >
         {/* Cell coordinates */}
         {showCoordinates && (
-          <div className="absolute bottom-0 right-0 text-xs text-white bg-black bg-opacity-50 px-1">
+          <div className="absolute bottom-0 right-0 text-xs text-white bg-black bg-opacity-50 px-1 z-20">
             {x},{y}
           </div>
         )}
         
         {/* Cell type indicator */}
         {showCellTypes && (
-          <div className="absolute top-0 left-0 text-xs text-white bg-black bg-opacity-50 px-1">
+          <div className="absolute top-0 left-0 text-xs text-white bg-black bg-opacity-50 px-1 z-20">
             {type.charAt(0)}
           </div>
         )}
@@ -253,7 +283,7 @@ export const Grid: React.FC<GridProps> = ({
         {/* Tower visualization */}
         {type === 'Tower' && towerStyle && (
           <div 
-            className="absolute inset-2 rounded-full flex items-center justify-center"
+            className="absolute inset-2 rounded-full flex items-center justify-center z-20"
             style={{ backgroundColor: towerStyle.color }}
           >
             <div 
@@ -267,16 +297,9 @@ export const Grid: React.FC<GridProps> = ({
           </div>
         )}
         
-        {/* Path visualization */}
-        {type === 'Path' && (
-          <div className="absolute inset-0 flex items-center justify-center">
-            <div className="w-1/2 h-1/2 rounded-full bg-gray-600 opacity-30"></div>
-          </div>
-        )}
-        
         {/* Range cell indicator */}
         {isRangeHighlighted && (
-          <div className="absolute inset-0 flex items-center justify-center">
+          <div className="absolute inset-0 flex items-center justify-center z-10">
             <div 
               className="w-full h-full opacity-20 transition-opacity duration-200"
               style={{ backgroundColor: hoveredTower?.color }}
@@ -291,7 +314,10 @@ export const Grid: React.FC<GridProps> = ({
   const tooltipPosition = getTooltipPosition();
   
   return (
-    <div className="relative transform origin-center transition-transform duration-300 ease-in-out">
+    <div className="relative transform origin-center transition-transform duration-300 ease-in-out" style={{ transform: `scale(${gridScale})` }}>
+      {/* Add style element for CSS patterns */}
+      <style>{cellStyles}</style>
+      
       <div 
         ref={gridRef}
         className="relative"
@@ -300,8 +326,6 @@ export const Grid: React.FC<GridProps> = ({
           height: gridHeight,
           backgroundColor: '#111',
           overflow: 'hidden',
-          transform: `scale(${gridScale})`,
-          transformOrigin: 'center',
         }}
       >
         {/* Grid background pattern for better visualization */}

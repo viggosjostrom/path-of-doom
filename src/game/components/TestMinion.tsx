@@ -30,25 +30,25 @@ export const TestMinion: React.FC<TestMinionProps> = ({ minion }) => {
   
   // Handle death animation
   useEffect(() => {
-    if (minion.health <= 0 && !isDying) {
+    if ((minion.health <= 0 || minion.isDead) && !isDying) {
       console.log(`Minion ${minion.id} is dying, starting animation`);
       setIsDying(true);
       // Wait for death animation to complete before hiding
       setTimeout(() => {
         console.log(`Minion ${minion.id} death animation complete, hiding`);
         setIsVisible(false);
-      }, 1000);
+      }, 2000);
     }
-  }, [minion.health, isDying, minion.id]);
+  }, [minion.health, minion.isDead, isDying, minion.id]);
   
   // Reset animation state if minion is revived
   useEffect(() => {
-    if (minion.health > 0 && isDying) {
+    if (minion.health > 0 && !minion.isDead && isDying) {
       console.log(`Minion ${minion.id} was revived, resetting animation state`);
       setIsDying(false);
       setIsVisible(true);
     }
-  }, [minion.health, isDying, minion.id]);
+  }, [minion.health, minion.isDead, isDying, minion.id]);
   
   // Skip rendering if minion is dead and animation completed
   if (minion.isDead && !isVisible) {
@@ -85,16 +85,16 @@ export const TestMinion: React.FC<TestMinionProps> = ({ minion }) => {
         }}
         initial={{ opacity: 0, scale: 0 }}
         animate={{ 
-          opacity: isDying ? 0 : 1, 
-          scale: isDying ? 0 : 1,
-          rotate: isDying ? 360 : 0,
+          opacity: isDying ? [1, 0.8, 0.6, 0.4, 0.2, 0] : 1, 
+          scale: isDying ? [1, 1.5, 0] : 1,
+          rotate: isDying ? [0, 180, 360] : 0,
           left: x,
-          top: isDying ? y - 20 : y
+          top: isDying ? y - 30 : y
         }}
         exit={{ opacity: 0, scale: 0, rotate: 360 }}
         transition={{ 
-          duration: isDying ? 1 : 0.3,
-          ease: isDying ? "backIn" : "easeOut",
+          duration: isDying ? 2 : 0.3,
+          ease: isDying ? "easeOut" : "easeOut",
           left: { duration: 0.2, ease: "linear" },
           top: { duration: 0.2, ease: "linear" }
         }}
@@ -138,26 +138,26 @@ export const TestMinion: React.FC<TestMinionProps> = ({ minion }) => {
           {/* Death particles */}
           {isDying && (
             <>
-              {[...Array(12)].map((_, i) => (
+              {[...Array(16)].map((_, i) => (
                 <motion.div
                   key={`particle-${i}`}
                   className="absolute rounded-full"
                   style={{
-                    width: 6,
-                    height: 6,
+                    width: i % 2 === 0 ? 8 : 6,
+                    height: i % 2 === 0 ? 8 : 6,
                     top: '50%',
                     left: '50%',
                     zIndex: 31,
-                    backgroundColor: i % 3 === 0 ? '#ef4444' : i % 3 === 1 ? '#f97316' : '#fbbf24',
+                    backgroundColor: i % 4 === 0 ? '#ef4444' : i % 4 === 1 ? '#f97316' : i % 4 === 2 ? '#fbbf24' : '#22c55e',
                   }}
                   animate={{
-                    x: Math.cos(i * Math.PI / 6) * CELL_SIZE * 0.8,
-                    y: Math.sin(i * Math.PI / 6) * CELL_SIZE * 0.8,
-                    opacity: [1, 0],
-                    scale: [1, 0],
+                    x: Math.cos(i * Math.PI / 8) * CELL_SIZE * 1.2,
+                    y: Math.sin(i * Math.PI / 8) * CELL_SIZE * 1.2,
+                    opacity: [1, 0.8, 0.6, 0.4, 0.2, 0],
+                    scale: [1, 1.5, 0],
                   }}
                   transition={{
-                    duration: 1,
+                    duration: 2,
                     ease: "easeOut",
                   }}
                 />

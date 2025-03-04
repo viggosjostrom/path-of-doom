@@ -30,7 +30,7 @@ export const Game: React.FC = () => {
   const [showGridStats, setShowGridStats] = useState(false);
   
   // Game state
-  const [resources, setResources] = useState(500);
+  const [resources, setResources] = useState(100);
   const [wave, setWave] = useState(1);
   const [lives, setLives] = useState(20);
   const [selectedTower, setSelectedTower] = useState<TowerSelection | null>(null);
@@ -46,39 +46,12 @@ export const Game: React.FC = () => {
   const animationFrameRef = useRef<number | null>(null);
   const lastUpdateTimeRef = useRef<number>(Date.now());
   const lastMinionSpawnTimeRef = useRef<number>(Date.now());
+  const deadMinionTimestamps = useRef<Record<string, number>>({});
   
   // Initialize grid with a default path
   const [grid, setGrid] = useState<GridCell[][]>(() => 
     createDefaultPath(createGrid(GRID_WIDTH, GRID_HEIGHT))
   );
-  
-  // Create test minions on path - only run once on initial mount
-  useEffect(() => {
-    const path = extractPathFromGrid(grid);
-    if (path.length > 0) {
-      // Create initial test minion in the middle of the path
-      const pathPosition = Math.floor(path.length / 2);
-      const minionPosition = path[pathPosition];
-      
-      const initialMinion: Minion = {
-        id: 'test-minion-1',
-        type: 'Grunt',
-        health: 200,
-        maxHealth: 200,
-        speed: 0,
-        reward: 10,
-        abilities: [],
-        position: minionPosition,
-        path: path,
-        pathIndex: pathPosition,
-        effects: [],
-        isDead: false
-      };
-      
-      setTestMinions([initialMinion]);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Empty dependency array means this only runs once on mount
   
   // Game update loop
   useEffect(() => {
@@ -95,7 +68,8 @@ export const Game: React.FC = () => {
           // Calculate how much to move based on speed and time
           const moveAmount = (movementSpeed * deltaTime) / 1000; // Convert to tiles per millisecond
           
-          return prevMinions.map(minion => {
+          // First, update minion positions
+          const updatedMinions = prevMinions.map(minion => {
             if (minion.isDead) return minion;
             
             // Calculate new path index
@@ -129,6 +103,38 @@ export const Game: React.FC = () => {
               position: exactPosition
             };
           });
+          
+          // Then, remove minions that have been dead for more than 3 seconds
+          // This gives time for death animations to complete
+          const deadMinionCleanupTime = 3000; // 3 seconds
+          
+          // Store death timestamps for minions that just died
+          updatedMinions.forEach(minion => {
+            if (minion.isDead && !deadMinionTimestamps.current[minion.id]) {
+              deadMinionTimestamps.current[minion.id] = now;
+            }
+          });
+          
+          // Filter out minions that have been dead long enough
+          const finalMinions = updatedMinions.filter(minion => {
+            if (!minion.isDead) return true;
+            
+            const deathTime = deadMinionTimestamps.current[minion.id] || now;
+            const timeSinceDeath = now - deathTime;
+            
+            // Keep the minion if it hasn't been dead long enough
+            return timeSinceDeath < deadMinionCleanupTime;
+          });
+          
+          // Clean up timestamps for minions that were removed
+          const remainingMinionIds = new Set(finalMinions.map(m => m.id));
+          Object.keys(deadMinionTimestamps.current).forEach(id => {
+            if (!remainingMinionIds.has(id)) {
+              delete deadMinionTimestamps.current[id];
+            }
+          });
+          
+          return finalMinions;
         });
         
         // Spawn new minions periodically if we have fewer than the max
@@ -516,41 +522,8 @@ export const Game: React.FC = () => {
   
   // Add a function to reset all test minions
   const resetTestMinions = () => {
-    // Get the path with cell IDs
-    const path = extractPathFromGrid(grid);
-    if (path.length === 0) return;
-    
-    // Add default id if it doesn't exist (for backward compatibility)
-    const pathWithIds = path.map(point => ({
-      x: point.x,
-      y: point.y,
-      id: point.id || `cell-${point.x}-${point.y}`
-    }));
-    
-    // Reset to a single minion in the middle of the path
-    const pathPosition = Math.floor(pathWithIds.length / 2);
-    const minionPosition = pathWithIds[pathPosition];
-    
-    const initialMinion: Minion = {
-      id: 'test-minion-1',
-      type: 'Grunt',
-      health: 200,
-      maxHealth: 200,
-      speed: 0,
-      reward: 10,
-      abilities: [],
-      position: {
-        x: minionPosition.x,
-        y: minionPosition.y,
-        id: minionPosition.id
-      },
-      path: path,
-      pathIndex: pathPosition,
-      effects: [],
-      isDead: false
-    };
-    
-    setTestMinions([initialMinion]);
+    // Clear all minions
+    setTestMinions([]);
   };
   
   // Handle death animation
@@ -662,7 +635,7 @@ export const Game: React.FC = () => {
                 className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-sm"
                 onClick={resetTestMinions}
               >
-                Reset Minions
+                Clear Minions
               </button>
             </div>
             
@@ -695,20 +668,16 @@ export const Game: React.FC = () => {
               </div>
             </div>
             
-            {testMinions.length > 0 && (
+            {testMinions.length > 0 && testMinions.some(minion => !minion.isDead) && (
               <div className="mt-4">
                 <h4 className="text-white text-sm font-medium mb-2">Active Minions</h4>
                 <div className="space-y-4 max-h-80 overflow-y-auto pr-2 custom-scrollbar">
-                  {testMinions.map((minion, index) => (
+                  {testMinions.filter(minion => !minion.isDead).map((minion, index) => (
                     <div key={minion.id} className="text-sm text-gray-300 border border-gray-600 p-2 rounded">
                       <div className="flex justify-between items-center mb-1">
                         <div className="font-medium">Minion #{index + 1}</div>
                         <div className="text-xs">
-                          {minion.isDead ? (
-                            <span className="text-red-400">Dead</span>
-                          ) : (
-                            <span className="text-green-400">Alive</span>
-                          )}
+                          <span className="text-green-400">Alive</span>
                         </div>
                       </div>
                       
